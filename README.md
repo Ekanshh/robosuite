@@ -15,6 +15,7 @@ I'm working with:
 - Linux Ubuntu 20.04
 - Mujoco 2.0
 - Python 3.8
+- test
 
 The main steps are:
 # A. Download & install Mujoco
