@@ -254,7 +254,7 @@ if __name__ == "__main__":
             robots="UR5e",  # use UR5e robot
             use_camera_obs=False,  # do not use pixel observations
             has_offscreen_renderer=False,  # not needed since not using pixel obs
-            has_renderer=True,  ##True  # make sure we can render to the screen
+            has_renderer=False,  ##True  # make sure we can render to the screen
             reward_shaping=True,  # use dense rewards
             ignore_done=False,
             horizon=500,
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     # model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs, tensorboard_log="./learning_log/ppo_tensorboard/",
     #             n_steps=10, seed=4)  # ,batch_size=3, n_steps=500*10
 
-    model = PPO.load("Daniel_n5_run_test2", verbose=1)
+    model = PPO.load("Daniel_n5_run_test3", verbose=1)
     # model.set_env(env)
     # model.learn(total_timesteps=10000, tb_log_name="learning", callback=reward_callback)#, eval_env=evaluate(model, env, n_eval_episod         es=10))
     print("Done")

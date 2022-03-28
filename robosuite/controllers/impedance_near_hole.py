@@ -311,7 +311,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-            print('enter')
+            # print('enter')
 
         if self.switch and self.enter:
             if self.bias == 0:

@@ -495,7 +495,7 @@ class RobotEnv(MujocoEnv):
             if self.num_via_point == 0 and self.sim.data.time == 0:
                 robot.t_finial = self.loop_time * self.trans
                 robot.via_point = self.via_point
-            print(self.num_via_point)
+            # print(self.num_via_point)
             robot.via_point_switch = self.num_via_point
             if self.success > 0:
                 robot.via_point_switch = 200
