@@ -585,7 +585,7 @@ class PegInHoleSmall(SingleArmEnv):
             trans_error = np.array([x_error, y_error, 0])
 
         trans_error[2] = 0
-        print(f"Error is {trans_error}")
+        # print(f"Error is {trans_error}")
         angle_error = ((np.random.rand(3) - 0.5) * 2) * (np.pi / 2) * self.angle_error
 
         # via_point_0 = np.concatenate((pos_via_point_0 + trans_error, angle_desired + angle_error), axis=-1)
