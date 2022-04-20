@@ -281,7 +281,7 @@ if __name__ == "__main__":
 
     policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[32, 32])
     model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs, tensorboard_log="./learning_log/ppo_tensorboard/",
-                n_steps=10)  # ,batch_size=3, n_steps=500*10
+                n_steps=10, seed=4)  # ,batch_size=3, n_steps=500*10
 
     # model = PPO.load("Daniel_n5_banchmark_single", verbose=1)
     # model.set_env(env)
