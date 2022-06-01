@@ -239,54 +239,41 @@ class PegInHoleSmall(SingleArmEnv):
         """
         #   TODO - reward(self, action=None) - change this function
         reward = 0
-        time_factor = (self.horizon - self.timestep) / self.horizon
         # Right location and angle
         if self._check_success() and self.num_via_point == 1:
             # reward = self.horizon * time_factor
 
             self.success += 1
             if self.success == 2:
-                S = 1
-            return reward
-
-        # use a shaping reward
-        if self.reward_shaping:
+                return reward
+            # contact
             # Grab relevant values
             t, d, cos = self._compute_orientation()
-            # Reach a terminal state as quickly as possible
-
             # reaching reward
-            reward += self.r_reach * cos  # * time_factor
-
-            # Orientation reward
+            reward += self.r_reach * cos
+            # print('reach', self.r_reach*cos)
             reward += self.hor_dist * 5
-            # reward += 1 - np.tanh(2.0*d)
-            # reward += 1 - np.tanh(np.abs(t))
+            # print('horizontal', self.hor_dist*50)
             reward += cos
+            # print('cos',cos)
 
-        # if we're not reward shaping, we need to scale our sparse reward so that the max reward is identical
-        # to its dense version
-        else:
-            reward *= 5.0
+            # hole_center = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("hole_middle_cylinder")])
+            # peg_end = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("peg_site")])
+            # horizon_dist = np.linalg.norm(peg_end[:2] - hole_center[:2])
+            # vert_dist = np.abs(peg_end[-1] - hole_center[-1])
+            # # # TODO rewards
+                # hor_reward = -0.01 * np.tanh(200 * (horizon_dist- 0.0075)) * 10000
+                # vert_reward = -0.1 * np.tanh(10 * (vert_dist - 0.075)) * 1000
 
-        if self.reward_scale is not None:
-            reward *= self.reward_scale
+            if self.reward_scale is not None:
+                reward *= self.reward_scale
 
-        if (self.num_via_point == 1
-                and (abs(self.hole_pos[0] - self.peg_pos[0]) > 0.045
-                      or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
-                     or self.peg_pos[2] > self.table_offset[2] + 0.1)
-                # or self.horizon - self.timestep == 1
-        ):
-            # reward = 0 * -self.horizon / 3
-            self.success -= 1
-            # self.checked = (self.num_via_points-2)
-            # self.switch = 0
-            # self.switch_seq = 0
-            # self.success = 0
-            # # self.trans *= 3
-            # self.reset_via_point()
-            # self.built_min_jerk_traj()
+            if (self.num_via_point == 1
+                    and (abs(self.hole_pos[0] - self.peg_pos[0]) > 0.045
+                          or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
+                         or self.peg_pos[2] > self.table_offset[2] + 0.1)):
+                print('fail')
+                self.success -= 1
 
         return reward
 
@@ -296,7 +283,6 @@ class PegInHoleSmall(SingleArmEnv):
         if (
                 abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
                 and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
-                # and abs(self.hole_pos[1] - self.peg_pos[1]) + abs(self.hole_pos[0] - self.peg_pos[0]) < 2e-4
                 and self.peg_pos[2] < self.table_offset[2] + 0.055
         ):
             res = True
@@ -325,6 +311,9 @@ class PegInHoleSmall(SingleArmEnv):
         self.rotation = None
         x_range = [-0.1, 0.1]
         y_range = [-0.1, 0.1]
+
+        # x_range = [0.1, 0.1]
+        # y_range = [0.0, 0.0]
 
         # initialize objects of interest
         self.peg = CylinderObject(name='peg',
@@ -372,6 +361,7 @@ class PegInHoleSmall(SingleArmEnv):
 
         # Make sure to add relevant assets from peg and hole objects
         self.model.merge_assets(self.peg)
+        # self.model.save_model('/home/danieln1/Downloads/original_n5/robosuite/siemens/full_model_comparison.xml',True)
 
     def _setup_references(self):
         """
@@ -456,15 +446,7 @@ class PegInHoleSmall(SingleArmEnv):
         self.enter = 1
         self.t_bias = 0
         self.reset_via_point()
-        # Reset all object positions using initializer sampler if we're not directly loading from an xml
-        # if not self.deterministic_reset:
 
-            # Sample from the placement initializer for all objects
-            # object_placements = self.placement_initializer.sample()
-            #
-            # # Loop through all objects and reset their positions
-            # for obj_pos, obj_quat, obj in object_placements.values():
-            #     self.sim.data.set_joint_qpos(obj.joints, np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
 
     def visualize(self, vis_settings):
         """
@@ -573,7 +555,7 @@ class PegInHoleSmall(SingleArmEnv):
         if self.error_type == 'none':
             trans_error = np.array([0, 0, 0]) * self.dist_error *0 # fixed error
         if self.error_type == 'fixed':
-            trans_error = np.array([1, 0, 0]) * self.dist_error # fixed error
+            trans_error = np.array([0.0, 0.001, 0.0]) # fixed error
         if self.error_type == 'ring':
             trans_error[:2] = random.choice(([random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1)),
                                               random.uniform(0., self.dist_error) * random.choice((-1, 1))],

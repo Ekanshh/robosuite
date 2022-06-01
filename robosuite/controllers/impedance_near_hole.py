@@ -5,6 +5,7 @@ from robosuite.models.base import MujocoModel
 
 from matplotlib import pyplot as plt
 import numpy as np
+import pandas as pd
 
 from scipy.linalg import expm
 from scipy.signal import savgol_filter
@@ -141,6 +142,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
             joint_indexes,
             actuator_range,
         )
+        self.t_flag = None
+        self.flag1 = False
 
         # for ploting:
         self.show_params = show_params
@@ -311,7 +314,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-            # print('enter')
+            print('enter')
 
         if self.switch and self.enter:
             if self.bias == 0:
@@ -348,34 +351,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
         desired_torque = (np.multiply(np.array(ori_error), np.array(self.kp[3:6]))
                           + np.multiply(vel_ori_error, self.kd[3:6]))
 
-        # Compute nullspace matrix (I - Jbar * J) and lambda matrices ((J * M^-1 * J^T)^-1)
-        lambda_full, lambda_pos, lambda_ori, nullspace_matrix = opspace_matrices(self.mass_matrix,
-                                                                                 self.J_full,
-                                                                                 self.J_pos,
-                                                                                 self.J_ori)
-
-        # Decouples desired positional control from orientation control
-        if self.uncoupling:
-            decoupled_force = np.dot(lambda_pos, desired_force.T)
-            decoupled_torque = np.dot(lambda_ori, desired_torque.T)
-            if self.switch:
-                decoupled_wrench = np.concatenate([desired_force, desired_torque])
-            else:
-                decoupled_wrench = np.concatenate([desired_force, desired_torque])
-                # decoupled_wrench = np.concatenate([decoupled_force, decoupled_torque])
-        else:
-            desired_wrench = np.concatenate([desired_force, desired_torque])
-            decoupled_wrench = np.dot(lambda_full, desired_wrench)
-
-        # Gamma (without null torques) = J^T * F + gravity compensations
-        # self.torques = np.zeros(6)
+        decoupled_wrench = np.concatenate([desired_force, desired_torque])
         self.torques = np.dot(self.J_full.T, decoupled_wrench).reshape(6, ) + self.torque_compensation
-
-        # Calculate and add nullspace torques (nullspace_matrix^T * Gamma_null) to final torques
-        # Note: Gamma_null = desired nullspace pose torques, assumed to be positional joint control relative
-        #                     to the initial joint positions
-        self.torques += nullspace_torques(self.mass_matrix, nullspace_matrix,
-                                          self.initial_joint, self.joint_pos, self.joint_vel)
 
         self.set_desired_goal = False
         # Always run superclass call for any cleanups at the end
@@ -383,6 +360,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         if np.isnan(self.torques).any():
             self.torques = np.zeros(6)
 
+        self.plotter = False
         if self.plotter:
             if self.sim.data.time > 25.0 - 0.02 or self.switch == 200:
                 self.control_plotter()
@@ -594,8 +572,9 @@ class ImpedancePositionBaseControllerPartial(Controller):
                                [0, 0, 0, 0, 0, action[17]]])
 
             self.kp_impedance = action[-6:]
-            self.kd_impedance = 2 * np.sqrt(self.kp_impedance)*np.sqrt(2)
+            self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
         if self.control_dim == 26:
+
             self.K = np.array([[abs(action[0]), 0, 0, 0, action[1], 0],
                                [0, abs(action[2]), 0, action[3], 0, 0],
                                [0, 0, abs(action[4]), 0, 0, 0],
@@ -609,18 +588,39 @@ class ImpedancePositionBaseControllerPartial(Controller):
                                [0, action[15], 0, abs(action[16]), 0, 0],
                                [action[17], 0, 0, 0, abs(action[18]), 0],
                                [0, 0, 0, 0, 0, abs(action[19])]])
+            #
+            # self.M = np.array([[abs(action[20]), 0, 0, 0, 0, 0],
+            #                    [0, abs(action[21]), 0, 0, 0, 0],
+            #                    [0, 0, abs(action[22]), 0, 0, 0],
+            #                    [0, 0, 0, abs(action[23]), 0, 0],
+            #                    [0, 0, 0, 0, abs(action[24]), 0],
+            #                    [0, 0, 0, 0, 0, abs(action[25])]])
+            # self.K = np.array([[24.51158142, 0., 0., 0., -42.63611603, 0.],
+            #                    [0., 40.25193405, 0., 26.59643364, 0., 0.],
+            #                    [0., 0., 23.69382477, 0., 0., 0.],
+            #                    [0., -10.66889191, 0., 3.27396274, 0., 0.],
+            #                    [-19.22241402, 0., 0., 0., 46.74688339, 0.],
+            #                    [0., 0., 0., 0., 0., 24.80905724]])
+            # self.C = np.array([[66.41168976, 0., 0., 0., -26.20734787, 0.],
+            #                    [0., 98.06533051, 0., 26.14341736, 0., 0.],
+            #                    [0., 0., 103.66620636, 0., 0., 0.],
+            #                    [0., 21.57993698, 0., 55.37984467, 0., 0.],
+            #                    [-0.29122657, 0., 0., 0., 0.14158408, 0.],
+            #                    [0., 0., 0., 0., 0., 2.37160134]])
+            # self.M = np.array([[112.29223633, 0.0, 0.0, 0.0, 0.0, 0.0],
+            #                     [0.0, 72.80897522, 0.0, 0.0, 0.0, 0.0],
+            #                     [0.0, 0.0, 169.45898438, 0.0, 0.0, 0.0],
+            #                     [0.0, 0.0, 0.0, 37.9505806, 0.0, 0.0],
+            #                     [0.0, 0.0, 0.0, 0.0, 4.87572193, 0.0],
+            #                     [0.0, 0.0, 0.0, 0.0, 0.0, 14.63672161]])
 
-            self.M = np.array([[abs(action[20]), 0, 0, 0, 0, 0],
-                               [0, abs(action[21]), 0, 0, 0, 0],
-                               [0, 0, abs(action[22]), 0, 0, 0],
-                               [0, 0, 0, abs(action[23]), 0, 0],
-                               [0, 0, 0, 0, abs(action[24]), 0],
-                               [0, 0, 0, 0, 0, abs(action[25])]])
             # self.C = np.nan_to_num(2 * np.sqrt(np.dot(self.K, self.M)))
             self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
             self.kd_impedance[3:] = 30
-
+            # print(self.K)
+            # print(self.C)
+            # print(self.M)
         if self.control_dim == 31:
             self.K = np.array([[action[0], 0, action[1], 0, action[2], 0],
                                [0, action[3], action[4], action[5], 0, 0],
@@ -670,24 +670,24 @@ class ImpedancePositionBaseControllerPartial(Controller):
         if self.control_dim == 30:
             self.K = np.array([[abs(action[0]), 0, 0, 0, action[1], 0],
                                [0, abs(action[2]), 0, action[3], 0, 0],
-                               [0, 0,    abs(action[4]),    0,   0, 0],
+                               [0, 0, abs(action[4]), 0, 0, 0],
                                [0, action[5], 0, abs(action[6]), 0, 0],
                                [action[7], 0, 0, 0, abs(action[8]), 0],
-                               [0, 0,    0,     0,  0, abs(action[9])]])
+                               [0, 0, 0, 0, 0, abs(action[9])]])
 
             self.C = np.array([[abs(action[10]), 0, 0, 0, action[11], 0],
                                [0, abs(action[12]), 0, action[13], 0, 0],
-                               [0, 0,    abs(action[14]),    0,  0,   0],
+                               [0, 0, abs(action[14]), 0, 0, 0],
                                [0, action[15], 0, abs(action[16]), 0, 0],
                                [action[17], 0, 0, 0, abs(action[18]), 0],
-                               [0,  0,  0,  0,   0,      abs(action[19])]])
+                               [0, 0, 0, 0, 0, abs(action[19])]])
 
             self.M = np.array([[abs(action[20]), 0, 0, 0, action[21], 0],
                                [0, abs(action[22]), 0, action[23], 0, 0],
-                               [0,  0,   abs(action[24]),   0,    0,  0],
+                               [0, 0, abs(action[24]), 0, 0, 0],
                                [0, action[25], 0, abs(action[26]), 0, 0],
                                [action[27], 0, 0, 0, abs(action[28]), 0],
-                               [0,   0,  0,  0,     0, abs(action[29])]])
+                               [0, 0, 0, 0, 0, abs(action[29])]])
             # self.C = np.nan_to_num(2 * np.sqrt(np.dot(self.K, self.M)))
             self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
@@ -727,7 +727,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
                                [0., 0., 0., 131.73561096, 0., 0.],
                                [0., 0., 0., 0., 7.31005669, 0.],
                                [0., 0., 0., 0., 0., 71.55409241]])
-
 
             self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
@@ -814,14 +813,55 @@ class ImpedancePositionBaseControllerPartial(Controller):
         y = lfilter(b[0], b[1], data)
         return y
 
+
+    def save_plot_data(self):
+        data = {}
+        data["time"] = self.time
+
+        data["Xm position"] = self.impedance_model_pos_vec_x
+        data["Xr position"] = self.ee_pos_vec_x
+        data["X_ref position"] = self.pos_min_jerk_x
+
+        data["Ym position"] = self.impedance_model_pos_vec_y
+        data["Yr position"] = self.ee_pos_vec_y
+        data["Y_ref position"] = self.pos_min_jerk_y
+
+        data["Zm position"] = self.impedance_model_pos_vec_z
+        data["Zr position"] = self.ee_pos_vec_z
+        data["Z_ref position"] = self.pos_min_jerk_z
+
+        data["Fx"] = self.wernce_vec_int_Fx
+        data["Fx_des"] = self.desired_force_x
+
+        data["Fy"] = self.wernce_vec_int_Fy
+        data["Fy_des"] = self.desired_force_y
+
+        data["Fz"] = self.wernce_vec_int_Fz
+        data["Fz_des"] = self.desired_force_z
+
+        data["Mx"] = self.wernce_vec_int_Mx
+        data["mx_des"] = self.desired_torque_x
+
+        data["My"] = self.wernce_vec_int_My
+        data["my_des"] = self.desired_torque_y
+
+        data["Mz"] = self.wernce_vec_int_Mz
+        data["mz_des"] = self.desired_torque_z
+
+        df = pd.DataFrame(data)
+        df.to_csv("data_daniel_plusy.csv", index=False)
+
     def control_plotter(self):
-        t = self.time#list(range(0, np.size(self.ee_pos_vec_x)))
+
+        # self.save_plot_data()
+        t = self.time  # list(range(0, np.size(self.ee_pos_vec_x)))
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.impedance_model_pos_vec_x, 'g--', label='Xm position')
         ax1.plot(t, self.ee_pos_vec_x, 'b', label='Xr position')
         ax1.plot(t, self.pos_min_jerk_x, 'r--', label='X_ref position')
+        # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('X Position [m]')
 
@@ -829,6 +869,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax2.plot(t, self.impedance_model_pos_vec_y, 'g--', label='Ym position')
         ax2.plot(t, self.ee_pos_vec_y, 'b', label='Yr position')
         ax2.plot(t, self.pos_min_jerk_y, 'r--', label='Y_ref position')
+        # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Y Position [m]')
 
@@ -836,16 +877,16 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax3.plot(t, self.impedance_model_pos_vec_z, 'g--', label='Zm position')
         ax3.plot(t, self.ee_pos_vec_z, 'b', label='Zr position')
         ax3.plot(t, self.pos_min_jerk_z, 'r--', label='Z_ref position')
+        # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Z Position [m]')
-
-        plt.savefig('plots/Position.png')
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.impedance_vel_vec_x, 'g--', label='Xm vel')
         ax1.plot(t, self.ee_vel_vec_x, 'b', label='Xr vel')
         ax1.plot(t, self.vel_min_jerk_x, 'r--', label='X_ref vel')
+        # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('X Velocity [m/s]')
 
@@ -853,6 +894,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax2.plot(t, self.impedance_vel_vec_y, 'g--', label='Ym vel')
         ax2.plot(t, self.ee_vel_vec_y, 'b', label='Yr vel')
         ax2.plot(t, self.vel_min_jerk_y, 'r--', label='Y_ref vel')
+        # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Y Velocity [m/s]')
 
@@ -860,31 +902,31 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax3.plot(t, self.impedance_vel_vec_z, 'g--', label='Zm vel')
         ax3.plot(t, self.ee_vel_vec_z, 'b', label='Zr vel')
         ax3.plot(t, self.vel_min_jerk_z, 'r--', label='Z_ref vel')
+        # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Z Velocity [m/s]')
-
-        plt.savefig('plots/vel.png')
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.ee_ori_vel_vec_x, 'b', label='Xr')
         ax1.plot(t, self.ori_vel_min_jerk_x, 'r--', label='X_ref ')
+        # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('X ori vel [rad/s]')
 
         ax2 = plt.subplot(312)
         ax2.plot(t, self.ee_ori_vel_vec_y, 'b', label='Yr ')
         ax2.plot(t, self.ori_vel_min_jerk_y, 'r--', label='Y_ref ')
+        # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Y ori vel [rad/s]')
 
         ax3 = plt.subplot(313)
         ax3.plot(t, self.ee_ori_vel_vec_z, 'b', label='Zr ')
         ax3.plot(t, self.ori_vel_min_jerk_z, 'r--', label='Z_ref ')
+        # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Z ori vel [rad/s]')
-
-        plt.savefig('plots/ori_vel.png')
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
@@ -907,49 +949,49 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax3.plot(t, self.impedance_ori_vec_z, 'g--', label='Zm ')
         ax3.legend()
         ax3.set_title('Z ori[rad]')
-
-        plt.savefig('plots/ori.png')
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.wernce_vec_int_Fx, 'b', label='Fx')
         ax1.plot(t, self.desired_force_x, 'g', label='Fx_des')
+        # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('Fx [N]')
 
         ax2 = plt.subplot(312)
         ax2.plot(t, self.wernce_vec_int_Fy, 'b', label='Fy')
         ax2.plot(t, self.desired_force_y, 'g', label='Fy_des')
+        # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Fy [N]')
 
         ax3 = plt.subplot(313)
         ax3.plot(t, self.wernce_vec_int_Fz, 'b', label='Fz')
         ax3.plot(t, self.desired_force_z, 'g', label='Fz_des')
+        # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Fz [N]')
-
-        plt.savefig('plots/F.png')
         ################################################################################################################
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.wernce_vec_int_Mx, 'b', label='Mx')
         ax1.plot(t, self.desired_torque_x, 'g', label='mx_des')
+        # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('Mx [Nm]')
 
         ax2 = plt.subplot(312)
         ax2.plot(t, self.wernce_vec_int_My, 'b', label='My')
         ax2.plot(t, self.desired_torque_y, 'g', label='My_des')
+        # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('My [Nm]')
 
         ax3 = plt.subplot(313)
         ax3.plot(t, self.wernce_vec_int_Mz, 'b', label='Mz')
         ax3.plot(t, self.desired_torque_z, 'g', label='Mz_des')
+        # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Mz [Nm]')
-
-        plt.savefig('plots/M.png')
         plt.show()
 

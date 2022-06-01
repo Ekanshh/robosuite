@@ -280,7 +280,8 @@ class MujocoEnv(metaclass=EnvMeta):
             for obs_name, obs in _observables.items():
                 self.modify_observable(observable_name=obs_name, attribute="sensor", modifier=obs._sensor)
         # Make sure that all sites are toggled OFF by default
-        self.visualize(vis_settings={vis: False for vis in self._visualizations})
+        # TODO: to view sites set False > True
+        self.visualize(vis_settings={vis: True for vis in self._visualizations})
         # Return new observations
         return self._get_observations(force_update=True)
 
@@ -446,43 +447,16 @@ class MujocoEnv(metaclass=EnvMeta):
             info.update({"is_success": True})
         else:
             info.update({"is_success": False})
+
         info.update({"episode": self.timestep})
-        if done and self.success > 1:
+        if self.success > 1:
             print("----------------:)------------------")
-            # reward =+ 100000
             self.rewards_all = []
             self.rewards_all = 40000
+        else:
+            print(f"Cumulative reward: {np.sum(self.rewards_all)}")
 
-            return self._get_observations(), np.sum(self.rewards_all) if np.sum(self.rewards_all) > 0 else 0, done, info
-        # elif self.success == -2:
-        #     self.rewards_all = []
-        #     self.rewards_all = 0
-        #     return self._get_observations(), np.sum(self.rewards_all) if np.sum(self.rewards_all) > 0 else 0, done, info
-        # elif done and sum(self.rewards_all) < 800:
-        #     reward = -600
-        self.rewards_all.append(reward)
-        print(f"Cumulative reward: {np.sum(self.rewards_all)}")
-        return self._get_observations(), np.sum(self.rewards_all) if np.sum(self.rewards_all) > 0 else 0, done, info
-
-        # # Loop through the simulation at the model timestep rate until we're ready to take the next policy step
-        # # (as defined by the control frequency specified at the environment level)
-        # for i in range(int(self.control_timestep / self.model_timestep)):
-        #     self.sim.forward()
-        #     self._pre_action(action, policy_step)
-        #     self.sim.step()
-        #     self._update_observables()
-        #     policy_step = False
-        #
-        # # Note: this is done all at once to avoid floating point inaccuracies
-        # self.cur_time += self.control_timestep
-        #
-        # reward, done, info = self._post_action(action)
-        # if self.success > 1:
-        #     info.update({"is_success": True})
-        # else:
-        #     info.update({"is_success": False})
-        # info.update({'time': self.timestep})
-        # return self._get_observations(), reward, done, info
+        return self._get_observations(), np.sum(self.rewards_all), done, info
 
     def _pre_action(self, action, policy_step=False):
         """
@@ -512,12 +486,14 @@ class MujocoEnv(metaclass=EnvMeta):
         reward = self.reward(action)
 
         # done if number of elapsed timesteps is greater than horizon
-        self.done = ((self.timestep >= self.horizon) or
-                     (self._check_success() and self.num_via_point == 1 and self.success == 2) or
-                     (self.num_via_point == 1 and self.success == -5) and not self.ignore_done)
-
-        # self.done = (self.timestep >= self.horizon) and not self.ignore_done
-
+        end_horizon = self.timestep >= self.horizon
+        end_termination = self.num_via_point == 1 and self.success == -5
+        end_success = self._check_success() and self.num_via_point == 1 and self.success == 2
+        if end_horizon:
+            print("End of horizon")
+        if end_termination:
+            print('Early termination')
+        self.done = end_termination or end_horizon or end_success
         return reward, self.done, {}
 
     def reward(self, action):
