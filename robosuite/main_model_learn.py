@@ -1,48 +1,12 @@
-"""
-This script shows how to adapt an environment to be compatible
-with the OpenAI Gym-style API. This is useful when using
-learning pipelines that require supporting these APIs.
-
-For instance, this can be used with OpenAI Baselines
-(https://github.com/openai/baselines) to train agents
-with RL.
-
-
-We base this script off of some code snippets found
-in the "Getting Started with Gym" section of the OpenAI 
-gym documentation.
-
-The following snippet was used to demo basic functionality.
-
-    import gym
-    env = gym.make('CartPole-v0')
-    for i_episode in range(20):
-        observation = env.reset()
-        for t in range(100):
-            env.render()
-            print(observation)
-            action = env.action_space.sample()
-            observation, reward, done, info = env.step(action)
-            if done:
-                print("Episode finished after {} timesteps".format(t+1))
-                break
-
-To adapt our APIs to be compatible with OpenAI Gym's style, this script
-demonstrates how this can be easily achieved by using the GymWrapper.
-"""
 from typing import Callable, List, Optional, Tuple, Union
 import os
 import gym
 import numpy as np
-import matplotlib.pyplot as plt
-import time
+import random
+
 from stable_baselines3.common import base_class
 from stable_baselines3.common.vec_env import VecEnv
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3 import PPO, TD3
-from stable_baselines3.ppo import MlpPolicy
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
@@ -50,25 +14,6 @@ from stable_baselines3.common.callbacks import BaseCallback
 import torch
 import robosuite as suite
 from robosuite.wrappers import GymWrapper
-
-from robosuite.wrappers import VisualizationWrapper
-
-
-def make_env(env, rank, seed=0):
-    """
-    Utility function for multiprocessed env.
-
-    :param env_id: (str) the environment ID
-    :param num_env: (int) the number of environments you wish to have in subprocesses
-    :param seed: (int) the inital seed for RNG
-    :param rank: (int) index of the subprocess
-    """
-    def _init():
-        # env = gym.make(env_id)
-        env.seed(seed + rank)
-        return env
-    set_random_seed(seed)
-    return _init
 
 
 class SaveOnBestTrainingRewardCallback(BaseCallback):
@@ -82,72 +27,51 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
     :param verbose: (int)
     """
 
-    def __init__(self, check_freq: int, log_dir: str, verbose=1):
+    def __init__(self, check_freq: int, log_dir: str, verbose=1, mean_eps=100):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
         self.check_freq = check_freq
         self.log_dir = log_dir
-        self.save_path = os.path.join(log_dir, 'medium_best_model_30_11_n5')
+        self.save_path = os.path.join(log_dir, 'best_model_callback')
         self.best_mean_reward = -np.inf
+        self.mean_eps = mean_eps
+        self.temp = {"Max Reward": [], "Episode": []}
 
     def _init_callback(self) -> None:
         # Create folder if needed
         if self.save_path is not None:
             os.makedirs(self.save_path, exist_ok=True)
+        assert self.check_freq >= self.mean_eps, "Check freq needs to be larger than mean_eps"
 
     def _on_step(self) -> bool:
         if self.n_calls % self.check_freq == 0:
-
+            print('----CallBack----')
             # Retrieve training reward
             x, y = ts2xy(load_results(self.log_dir), 'timesteps')
             if len(x) > 0:
                 # Mean training reward over the last 100 episodes
-                mean_reward = np.mean(y[-100:])
+                mean_reward = np.mean(y[-self.mean_eps:])
                 if self.verbose > 0:
-                    print("Num timesteps: {}".format(self.num_timesteps))
-                    print(
-                        "Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward,
-                                                                                                 mean_reward))
-
-                # New best model, you could save the agent here
+                    print(f'Evaluating model at episode: {self.num_timesteps}')
+                    print(f"Current mean reward over last {self.mean_eps} episodes is: {mean_reward}")
+                    print(f"Previous best mean reward was {self.best_mean_reward}")
+                # New best model
                 if mean_reward > self.best_mean_reward:
                     self.best_mean_reward = mean_reward
                     # Example for saving best model
-                    if self.verbose > 0:
-                        print("Saving new best model to {}".format(self.save_path))
+                    self.temp['Max Reward'].append(self.best_mean_reward)
+                    self.temp['Episode'].append(self.num_timesteps)
+
+                    path = os.path.join(self.save_path, f'best_model_{self.num_timesteps}')
+                    print("Saving new best model to {}".format(path))
+                    path2 = os.path.join(self.save_path, 'callback_best_runs')
+                    # save every best episode and reward to csv file
+                    dict_csv(path2, self.temp)
+                    # save every model when it is best for the current point of simulation
+                    self.model.save(path)
+                    # save one final best model
                     self.model.save(self.save_path)
 
         return True
-
-
-class PlottingCallback(BaseCallback):
-    """
-    Callback for plotting the performance in realtime.
-
-    :param verbose: (int)
-    """
-
-    def __init__(self, verbose=1):
-        super(PlottingCallback, self).__init__(verbose)
-        self._plot = None
-
-    def _on_step(self) -> bool:
-        # get the monitor's data
-        x, y = ts2xy(load_results(log_dir), 'timesteps')
-
-        if self._plot is None:  # make the plot
-            plt.ion()
-            fig = plt.figure(figsize=(6, 3))
-            ax = fig.add_subplot(111)
-            line, = ax.plot(x, y)
-            self._plot = (line, ax, fig)
-            plt.show()
-        else:  # update and rescale the plot
-            self._plot[0].set_data(x, y)
-            self._plot[-2].relim()
-            self._plot[-2].set_xlim([self.locals["total_timesteps"] * -0.02,
-                                     self.locals["total_timesteps"] * 1.02])
-            self._plot[-2].autoscale_view(True, True, True)
-            self._plot[-1].canvas.draw()
 
 
 def evaluate(model: "base_class.BaseAlgorithm",
@@ -180,8 +104,7 @@ def evaluate(model: "base_class.BaseAlgorithm",
     """
     global _info, obs
     if isinstance(env, VecEnv):
-        assert env.num_envs == 1, "You must pass only one environment when using this function"\
-
+        assert env.num_envs == 1, "You must pass only one environment when using this function"
     actions = []
     episode_rewards, episode_lengths = [], []
     episode_success = 0
@@ -219,39 +142,59 @@ def evaluate(model: "base_class.BaseAlgorithm",
     return mean_reward, std_reward, episode_success
 
 
-def linear_schedule(initial_value: float) -> Callable[[float], float]:
-    """
-    Linear learning rate schedule.
+def dict_csv(name, dict):
+    '''
+    Function saving dictionary as csv file:
+        Parameters:
+            name (str): name of the created csv file
+            dict (dict): dictionary to be saved
+    '''
+    file_name = name + '.csv'
+    with open(file_name, 'w') as f:
+        for key in dict.keys():
+            f.write("%s,%s\n" % (key, dict[key]))
+    return
 
-    :param initial_value: Initial learning rate.
-    :return: schedule that computes
-      current learning rate depending on remaining progress
-    """
-    def func(progress_remaining: float) -> float:
-        """
-        Progress will decrease from 1 (beginning) to 0.
+def seed_initializer():
+    '''
+    Function used to define seed as well as to save it in csv file:
+        Returns:
+            seed:
+    '''
+    seed = random.randint(0, 1000)
+    print('Seed used', seed)
+    return seed
 
-        :param progress_remaining:
-        :return: current learning rate
-        """
-        return progress_remaining * initial_value
+def model_info_collect(model):
 
-    return func
+    init_weights = model.get_parameters()
+    dict_csv(name=os.path.join(log_dir_extras, 'init_weights'), dict=init_weights)
+    learn_info = {}
+    learn_info['Num of envs'] = 1
+    learn_info['Initialization seed of NN'] = model.seed
+    learn_info['N_steps'] = model.n_steps
+    learn_info['Training steps'] = learning_steps
+    learn_info['Policy_kwargs'] = model.policy_kwargs
+    learn_info['Policy'] = model.policy
 
+    dict_csv(name=os.path.join(log_dir_extras, 'model'), dict=learn_info)
+    return
 
 if __name__ == "__main__":
     # Create log dir
-    log_dir = "robosuite/best_models/"
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = 'robosuite/'
+    log_dir_extras = os.path.join(log_dir, 'extras')
+    log_dir_callback = os.path.join(log_dir, 'callback')
+    os.makedirs(log_dir_callback, exist_ok=True)
+    os.makedirs(log_dir_extras, exist_ok=True)
 
-    # Load the desired controller's default config as a dict
-    # config = load_controllesshir_config(default_controller='OSC_POSE')
     control_param = dict(type='IMPEDANCE_POSE_Partial', input_max=1, input_min=-1,
                          output_max=[0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
                          output_min=[-0.05, -0.05, -0.05, -0.5, -0.5, -0.5], kp=700, damping_ratio=np.sqrt(2),
                          impedance_mode='fixed', kp_limits=[0, 100000], damping_ratio_limits=[0, 10],
                          position_limits=None, orientation_limits=None, uncouple_pos_ori=True, control_delta=True,
-                         interpolation=None, ramp_ratio=0.2, control_dim=26, plotter=False, ori_method='rotation', show_params=False)
+                         interpolation=None, ramp_ratio=0.2, control_dim=26, plotter=False, ori_method='rotation',
+                         show_params=False)
 
     # Notice how the environment is wrapped by the wrapper
     env = GymWrapper(
@@ -260,35 +203,60 @@ if __name__ == "__main__":
             robots="UR5e",  # use UR5e robot
             use_camera_obs=False,  # do not use pixel observations
             has_offscreen_renderer=False,  # not needed since not using pixel obs
-            has_renderer=True,  ##True  # make sure we can render to the screen
-            reward_shaping=True,  # use dense rewards
+            has_renderer=False,  # Make sure we can render to the screen
+            reward_shaping=True,
             ignore_done=False,
             horizon=500,
             control_freq=20,  # control should happen fast enough so that simulation looks smooth
             controller_configs=control_param,
             r_reach_value=0.2,
             tanh_value=20.0,
-            error_type='fixed',
+            error_type='ring',
             control_spec=26,
             dist_error=0.0008
         )
     )
-    # env = DummyVecEnv([lambda: env_id])
-    # env.reset()
-    env = Monitor(env, log_dir, allow_early_resets=True)
-    # Create the callback: check every 200 steps
-    reward_callback = SaveOnBestTrainingRewardCallback(check_freq=200, log_dir=log_dir)
+    eval_steps = 50
+    learning_steps = 10_000
+    # seed = 4
+    seed = seed_initializer()
+    mode = 'new_train'
+    # mode = 'eval'
+    # mode = 'continue_train'
 
-    policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[32, 32])
-    model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs, tensorboard_log="./learning_log/ppo_tensorboard/",
-                n_steps=10, seed=4)  # ,batch_size=3, n_steps=500*10
+    env = Monitor(env, log_dir_callback, allow_early_resets=True)
+    # Create the callback: check every check_freq steps
+    reward_callback = SaveOnBestTrainingRewardCallback(mean_eps=100, check_freq=200, log_dir=log_dir_callback)
 
-    # model = PPO.load("./daniel_sim_results/daniel_original_benchmark/Daniel_n5_banchmark_single.zip", verbose=1)
-    # model.set_env(env)
-    model.learn(total_timesteps=10000, tb_log_name="learning", callback=reward_callback)#, eval_env=evaluate(model, env, n_eval_episod         es=10))
-    print("Done")
-    model.save('Daniel__single_noseed_20steps')
-    # changed: multiply by *10 instead of 5 in env
+    if mode == 'new_train':
+        print('Training New Model')
 
-    mean_reward, std_reward, episode_success = evaluate(model, env, n_eval_episodes=50, render=False)
-    print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f} \nsuccess rate: {episode_success / 50 * 100:.1f}")
+        # new training
+        policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[32, 32])
+        model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs,
+                    tensorboard_log="./learning_log/ppo_tensorboard/", n_steps=10, seed=seed)
+
+        model_info_collect(model=model)
+
+        model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback)
+        print("------------ Done Training -------------")
+        model.save('Benchmark_after_changes')
+
+    if mode == 'eval':
+        print('Evaluating Model')
+        # evaluation
+        model = PPO.load("./daniel_sim_results/daniel_original_benchmark/Daniel_n5_banchmark_single.zip", verbose=1,
+                         env=env)
+
+    if mode == 'continue_train':
+        print('Training Continuation')
+        model = PPO.load("./daniel_sim_results/daniel_original_benchmark/Daniel_n5_banchmark_single.zip",
+                         tensorboard_log="./learning_log/ppo_tensorboard/", verbose=1, env=env)
+        model.set_env(env)
+        model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback, reset_num_timesteps=False)
+        print("------------ Done Retraining -------------")
+
+    # evaluation
+    mean_reward, std_reward, episode_success = evaluate(model, env, n_eval_episodes=eval_steps, render=False)
+    print(
+        f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f} \nsuccess rate: {episode_success / eval_steps * 100:.1f}")

@@ -312,9 +312,14 @@ class ImpedancePositionBaseControllerPartial(Controller):
                 axis=0))
             self.bias = 0
 
+        # if self.ee_pos[2] <= 0.9072620333680175 and self.flag1 is False:
+        #     self.t_flag = self.time[-1]
+        #     print(self.t_flag)
+        #     self.flag1 = True
+
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-            print('enter')
+            # print('enter')
 
         if self.switch and self.enter:
             if self.bias == 0:
@@ -588,13 +593,13 @@ class ImpedancePositionBaseControllerPartial(Controller):
                                [0, action[15], 0, abs(action[16]), 0, 0],
                                [action[17], 0, 0, 0, abs(action[18]), 0],
                                [0, 0, 0, 0, 0, abs(action[19])]])
-            #
-            # self.M = np.array([[abs(action[20]), 0, 0, 0, 0, 0],
-            #                    [0, abs(action[21]), 0, 0, 0, 0],
-            #                    [0, 0, abs(action[22]), 0, 0, 0],
-            #                    [0, 0, 0, abs(action[23]), 0, 0],
-            #                    [0, 0, 0, 0, abs(action[24]), 0],
-            #                    [0, 0, 0, 0, 0, abs(action[25])]])
+
+            self.M = np.array([[abs(action[20]), 0, 0, 0, 0, 0],
+                               [0, abs(action[21]), 0, 0, 0, 0],
+                               [0, 0, abs(action[22]), 0, 0, 0],
+                               [0, 0, 0, abs(action[23]), 0, 0],
+                               [0, 0, 0, 0, abs(action[24]), 0],
+                               [0, 0, 0, 0, 0, abs(action[25])]])
             # self.K = np.array([[24.51158142, 0., 0., 0., -42.63611603, 0.],
             #                    [0., 40.25193405, 0., 26.59643364, 0., 0.],
             #                    [0., 0., 23.69382477, 0., 0., 0.],
@@ -621,25 +626,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             # print(self.K)
             # print(self.C)
             # print(self.M)
-        if self.control_dim == 31:
-            self.K = np.array([[action[0], 0, action[1], 0, action[2], 0],
-                               [0, action[3], action[4], action[5], 0, 0],
-                               [0, 0, action[6], 0, 0, 0],
-                               [0, action[7], 0, action[8], 0, 0],
-                               [action[9], 0, 0, 0, action[10], 0],
-                               [0, 0, 0, 0, 0, action[11]]])
-
-            self.C = np.array([[action[12], 0, action[13], 0, action[14], 0],
-                               [0, action[15], action[16], action[17], 0, 0],
-                               [0, 0, action[18], 0, 0, 0],
-                               [0, action[19], 0, action[20], 0, 0],
-                               [action[21], 0, 0, 0, action[22], 0],
-                               [0, 0, 0, 0, 0, action[23]]])
-
-            self.M = deepcopy(self.mass_matrix)
-
-            self.kp_impedance = action[24:30]
-            self.kd_impedance = action[30:]
 
         if self.control_dim == 18:
             self.K = np.array([[abs(action[0]), 0, 0, 0, 0, 0],
@@ -667,119 +653,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
             self.kd_impedance[3:] = 30
 
-        if self.control_dim == 30:
-            self.K = np.array([[abs(action[0]), 0, 0, 0, action[1], 0],
-                               [0, abs(action[2]), 0, action[3], 0, 0],
-                               [0, 0, abs(action[4]), 0, 0, 0],
-                               [0, action[5], 0, abs(action[6]), 0, 0],
-                               [action[7], 0, 0, 0, abs(action[8]), 0],
-                               [0, 0, 0, 0, 0, abs(action[9])]])
-
-            self.C = np.array([[abs(action[10]), 0, 0, 0, action[11], 0],
-                               [0, abs(action[12]), 0, action[13], 0, 0],
-                               [0, 0, abs(action[14]), 0, 0, 0],
-                               [0, action[15], 0, abs(action[16]), 0, 0],
-                               [action[17], 0, 0, 0, abs(action[18]), 0],
-                               [0, 0, 0, 0, 0, abs(action[19])]])
-
-            self.M = np.array([[abs(action[20]), 0, 0, 0, action[21], 0],
-                               [0, abs(action[22]), 0, action[23], 0, 0],
-                               [0, 0, abs(action[24]), 0, 0, 0],
-                               [0, action[25], 0, abs(action[26]), 0, 0],
-                               [action[27], 0, 0, 0, abs(action[28]), 0],
-                               [0, 0, 0, 0, 0, abs(action[29])]])
-            # self.C = np.nan_to_num(2 * np.sqrt(np.dot(self.K, self.M)))
-            self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
-            self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
-            self.kd_impedance[3:] = 30
-
-        if self.control_dim == 20:
-            # self.K = np.array([[67.13220215, 0., 0., 0., 9.38473892, 0.],
-            #                    [0., 8.54352093, 0., 47.33671188, 0., 0.],
-            #                    [0., 0., 20.63996696, 0., 0., 0.],
-            #                    [0., -16.23622131, 0., 82.36942291, 0., 0.],
-            #                    [-93.67277527, 0., 0., 0., 97.15507507, 0.],
-            #                    [0., 0., 0., 0., 0., 23.18631363]])
-            #
-            # self.C = np.array([[125.35553741, 0., 0., 0., - 89.44863129, 0.],
-            #                    [0., 7.39338446, 0., -52.44866943, 0., 0.],
-            #                    [0., 0., 45.41607285, 0., 0., 0.],
-            #                    [0., 4.19338131, 0., 76.46173859, 0., 0.],
-            #                    [-13.89418507, 0., 0., 0., 10.78733349, 0.],
-            #                    [0., 0., 0., 0., 0., 76.35520172]])
-            self.K = np.array([[abs(action[0]), 0, 0, 0, action[1], 0],
-                               [0, abs(action[2]), 0, action[3], 0, 0],
-                               [0, 0, abs(action[4]), 0, 0, 0],
-                               [0, action[5], 0, abs(action[6]), 0, 0],
-                               [action[7], 0, 0, 0, abs(action[8]), 0],
-                               [0, 0, 0, 0, 0, abs(action[9])]])
-
-            self.C = np.array([[abs(action[10]), 0, 0, 0, action[11], 0],
-                               [0, abs(action[12]), 0, action[13], 0, 0],
-                               [0, 0, abs(action[14]), 0, 0, 0],
-                               [0, action[15], 0, abs(action[16]), 0, 0],
-                               [action[17], 0, 0, 0, abs(action[18]), 0],
-                               [0, 0, 0, 0, 0, abs(action[19])]])
-
-            self.M = np.array([[44.93156433, 0., 0., 0., 0., 0.],
-                               [0., 53.0908432, 0., 0., 0., 0.],
-                               [0., 0., 5.83020163, 0., 0., 0.],
-                               [0., 0., 0., 131.73561096, 0., 0.],
-                               [0., 0., 0., 0., 7.31005669, 0.],
-                               [0., 0., 0., 0., 0., 71.55409241]])
-
-            self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
-            self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
-            self.kd_impedance[3:] = 30
-
-        if self.control_dim == 108:
-            # self.K = np.load('environments/Kimp.npy')
-            # self.K = np.array([[100, 0., 0., 0., 0., 0.],
-            #                    [0., 117.6, 0., 0., 0., 0.],
-            #                    [0., 0., 800., 0., 0., 0.],
-            #                    [0., 0., 0., 300., 0., 0.],
-            #                    [0., 0., 0., 0., 235, 0.],
-            #                    [0., 0., 0., 0., 0., 20.]])
-
-            self.K = np.array([[100.28571429, 0., 0., 0., 0., 0.],
-                               [0., 117.6, 0., 0., 0., 0.],
-                               [0., 0., 15., 0., 0., 0.],
-                               [0., 0., 0., 300., 0., 0.],
-                               [0., 0., 0., 0., 235.71428571, 0.],
-                               [0., 0., 0., 0., 0., 2.]]) * 8
-
-            # self.C = 2 * np.sqrt(self.K)*np.sqrt(2)
-            # self.C = np.array([[50, 0., 0., 0., 0., 0.],
-            #                    [0., 90, 0., 0., 0., 0.],
-            #                    [0., 0., 20., 0., 0., 0.],
-            #                    [0., 0., 0., 50, 0., 0.],
-            #                    [0., 0., 0., 0., 45, 0.],
-            #                    [0., 0., 0., 0., 0., 7.]])
-            self.C = np.array([[.85, 0., 0., 0., 0., 0.],
-                               [0., 7.5, 0., 0., 0., 0.],
-                               [0., 0., .7, 0., 0., 0.],
-                               [0., 0., 0., 21.21, 0., 0.],
-                               [0., 0., 0., 0., 16.6, 0.],
-                               [0., 0., 0., 0., 0., 0.09]]) * 80
-            # self.C[4, 0] = 1
-            # self.C[3, 3] = 100
-            # self.C[0, 0] = 6
-            # self.C[3,1] = 10
-            # self.M = np.load('environments/Mimp.npy')
-            self.M = np.array([[0.15, 0., 0., 0., 0., 0.],
-                               [0., 0.25, 0., 0., 0., 0.],
-                               [0., 0., 1.66, 0., 0., 0.],
-                               [0., 0., 0., 0.75, 0., 0.],
-                               [0., 0., 0., 0., 0.58, 0.],
-                               [0., 0., 0., 0., 0., 0.01]])
-            # self.M[3,1] = 0
-            # self.kp_impedance = np.concatenate((np.diag(np.load('environments/Kf_pd.npy')), np.diag(np.load('environments/Km_pd.npy'))), axis=0)
-            self.kp_impedance = np.array([700., 700., 200., 450., 450., 200.])
-            # self.kd_impedance = np.concatenate(
-            #     (np.diag(np.load('environments/Cf_pd.npy')), np.diag(np.load('environments/Cm_pd.npy'))), axis=0)
-            self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
-            # np.array([50.98249504,  50.98249504, 50.09000601,  30.83037278, 30.83037278,  30.83037278])
-            self.kd_impedance[3:] = 30
 
             if self.show_params:
                 print('-------------------------K--------------------------------')
@@ -849,7 +722,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         data["mz_des"] = self.desired_torque_z
 
         df = pd.DataFrame(data)
-        df.to_csv("data_daniel_plusy.csv", index=False)
+        df.to_csv("data_daniel_plusx_test.csv", index=False)
 
     def control_plotter(self):
 
@@ -878,6 +751,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax3.plot(t, self.ee_pos_vec_z, 'b', label='Zr position')
         ax3.plot(t, self.pos_min_jerk_z, 'r--', label='Z_ref position')
         # ax3.axvline(x=self.t_flag, color='k')
+        # ax3.axvline(x=16, color='k')
         ax3.legend()
         ax3.set_title('Z Position [m]')
         ################################################################################################################

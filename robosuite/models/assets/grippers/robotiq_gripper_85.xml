@@ -35,7 +35,7 @@
 
     <worldbody>
         <body name="robotiq_85_adapter_link" pos="0.0 0 0" >
-            <site name="ft_frame" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere" group="1" />
+            <site name="ft_frame" pos="0 0 0" size="0.001 0.001 0.001" rgba="1 0 0 1" type="sphere" group="1" />
             <!-- This site was added for visualization. -->
             <body name="eef" pos="0 0 0.145">
 <!--                  quat="0.707105 0 0 -0.707105">-->

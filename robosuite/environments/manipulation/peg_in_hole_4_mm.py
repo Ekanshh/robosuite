@@ -248,32 +248,32 @@ class PegInHoleSmall(SingleArmEnv):
                 return reward
             # contact
             # Grab relevant values
-            t, d, cos = self._compute_orientation()
-            # reaching reward
-            reward += self.r_reach * cos
-            # print('reach', self.r_reach*cos)
-            reward += self.hor_dist * 5
-            # print('horizontal', self.hor_dist*50)
-            reward += cos
-            # print('cos',cos)
+        t, d, cos = self._compute_orientation()
+        # reaching reward
+        reward += self.r_reach * cos
+        # print('reach', self.r_reach*cos)
+        reward += self.hor_dist * 5
+        # print('horizontal', self.hor_dist*50)
+        reward += cos
+        # print('cos',cos)
 
-            # hole_center = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("hole_middle_cylinder")])
-            # peg_end = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("peg_site")])
-            # horizon_dist = np.linalg.norm(peg_end[:2] - hole_center[:2])
-            # vert_dist = np.abs(peg_end[-1] - hole_center[-1])
-            # # # TODO rewards
-                # hor_reward = -0.01 * np.tanh(200 * (horizon_dist- 0.0075)) * 10000
-                # vert_reward = -0.1 * np.tanh(10 * (vert_dist - 0.075)) * 1000
+        # hole_center = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("hole_middle_cylinder")])
+        # peg_end = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("peg_site")])
+        # horizon_dist = np.linalg.norm(peg_end[:2] - hole_center[:2])
+        # vert_dist = np.abs(peg_end[-1] - hole_center[-1])
+        # # # TODO rewards
+            # hor_reward = -0.01 * np.tanh(200 * (horizon_dist- 0.0075)) * 10000
+            # vert_reward = -0.1 * np.tanh(10 * (vert_dist - 0.075)) * 1000
 
-            if self.reward_scale is not None:
-                reward *= self.reward_scale
+        if self.reward_scale is not None:
+            reward *= self.reward_scale
 
-            if (self.num_via_point == 1
-                    and (abs(self.hole_pos[0] - self.peg_pos[0]) > 0.045
-                          or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
-                         or self.peg_pos[2] > self.table_offset[2] + 0.1)):
-                print('fail')
-                self.success -= 1
+        if (self.num_via_point == 1
+                and (abs(self.hole_pos[0] - self.peg_pos[0]) > 0.045
+                      or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
+                     or self.peg_pos[2] > self.table_offset[2] + 0.1)):
+            # print('fail')
+            self.success -= 1
 
         return reward
 

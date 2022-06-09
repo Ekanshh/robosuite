@@ -1,48 +1,14 @@
-"""
-This script shows how to adapt an environment to be compatible
-with the OpenAI Gym-style API. This is useful when using
-learning pipelines that require supporting these APIs.
-
-For instance, this can be used with OpenAI Baselines
-(https://github.com/openai/baselines) to train agents
-with RL.
-
-
-We base this script off of some code snippets found
-in the "Getting Started with Gym" section of the OpenAI
-gym documentation.
-
-The following snippet was used to demo basic functionality.
-
-    import gym
-    env = gym.make('CartPole-v0')
-    for i_episode in range(20):
-        observation = env.reset()
-        for t in range(100):
-            env.render()
-            print(observation)
-            action = env.action_space.sample()
-            observation, reward, done, info = env.step(action)
-            if done:
-                print("Episode finished after {} timesteps".format(t+1))
-                break
-
-To adapt our APIs to be compatible with OpenAI Gym's style, this script
-demonstrates how this can be easily achieved by using the GymWrapper.
-"""
 from typing import Callable, List, Optional, Tuple, Union
 import os
 import gym
 import numpy as np
-import matplotlib.pyplot as plt
-import time
+import random
+
 from stable_baselines3.common import base_class
 from stable_baselines3.common.vec_env import VecEnv
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3 import PPO, TD3
-from stable_baselines3.ppo import MlpPolicy
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
@@ -51,8 +17,18 @@ import torch
 import robosuite as suite
 from robosuite.wrappers import GymWrapper
 
-from robosuite.wrappers import VisualizationWrapper
-
+def dict_csv(name, dict):
+    '''
+    Function saving dictionary as csv file:
+        Parameters:
+            name (str): name of the created csv file
+            dict (dict): dictionary to be saved
+    '''
+    file_name = name + '.csv'
+    with open(file_name, 'w') as f:
+        for key in dict.keys():
+            f.write("%s,%s\n" % (key, dict[key]))
+    return
 
 class SaveOnBestTrainingRewardCallback(BaseCallback):
     """
@@ -65,12 +41,14 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
     :param verbose: (int)
     """
 
-    def __init__(self, check_freq: int, log_dir: str, verbose=1):
+    def __init__(self, check_freq: int, log_dir: str, verbose=1, mean_eps=100):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
         self.check_freq = check_freq
         self.log_dir = log_dir
-        self.save_path = os.path.join(log_dir, 'medium_best_model_30_11_n5')
+        self.save_path = os.path.join(log_dir, 'best_model_callback')
         self.best_mean_reward = -np.inf
+        self.mean_eps = mean_eps
+        self.temp = {"Max Reward": [], "Episode" : []}
 
     def _init_callback(self) -> None:
         # Create folder if needed
@@ -78,60 +56,38 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             os.makedirs(self.save_path, exist_ok=True)
 
     def _on_step(self) -> bool:
+        # n_call is incremented every n_process steps/ episodes
+        print(self.num_timesteps)
         if self.n_calls % self.check_freq == 0:
+            print('---Callback---')
 
             # Retrieve training reward
             x, y = ts2xy(load_results(self.log_dir), 'timesteps')
             if len(x) > 0:
                 # Mean training reward over the last 100 episodes
-                mean_reward = np.mean(y[-100:])
+                mean_reward = np.mean(y[-self.mean_eps:])
                 if self.verbose > 0:
-                    print("Num timesteps: {}".format(self.num_timesteps))
-                    print(
-                        "Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward,
-                                                                                                 mean_reward))
-
+                    print(f'Evaluating model at episode: {self.num_timesteps}')
+                    print(f"Current mean reward over last {self.mean_eps} episodes is: {mean_reward}")
+                    print(f"Previous best mean reward was {self.best_mean_reward}")
                 # New best model, you could save the agent here
                 if mean_reward > self.best_mean_reward:
                     self.best_mean_reward = mean_reward
                     # Example for saving best model
-                    if self.verbose > 0:
-                        print("Saving new best model to {}".format(self.save_path))
+                    self.temp['Max Reward'].append(self.best_mean_reward)
+                    self.temp['Episode'].append(self.num_timesteps)
+
+                    path = os.path.join(self.save_path, f'best_model_{self.num_timesteps}')
+                    path2 = os.path.join(self.save_path, 'callback_best_runs')
+                    print("Saving new best model to {}".format(path))
+                    # save every best episode and reward to csv file
+                    dict_csv(path2, self.temp)
+                    # save every model when it is best for the current point of simulation
+                    self.model.save(path)
+                    # save one final best model
                     self.model.save(self.save_path)
 
         return True
-
-
-class PlottingCallback(BaseCallback):
-    """
-    Callback for plotting the performance in realtime.
-
-    :param verbose: (int)
-    """
-
-    def __init__(self, verbose=1):
-        super(PlottingCallback, self).__init__(verbose)
-        self._plot = None
-
-    def _on_step(self) -> bool:
-        # get the monitor's data
-        x, y = ts2xy(load_results(log_dir), 'timesteps')
-
-        if self._plot is None:  # make the plot
-            plt.ion()
-            fig = plt.figure(figsize=(6, 3))
-            ax = fig.add_subplot(111)
-            line, = ax.plot(x, y)
-            self._plot = (line, ax, fig)
-            plt.show()
-        else:  # update and rescale the plot
-            self._plot[0].set_data(x, y)
-            self._plot[-2].relim()
-            self._plot[-2].set_xlim([self.locals["total_timesteps"] * -0.02,
-                                     self.locals["total_timesteps"] * 1.02])
-            self._plot[-2].autoscale_view(True, True, True)
-            self._plot[-1].canvas.draw()
-
 
 def evaluate(model: "base_class.BaseAlgorithm",
              env: Union[gym.Env, VecEnv],
@@ -201,26 +157,6 @@ def evaluate(model: "base_class.BaseAlgorithm",
     # print('Saved CSV')
     return mean_reward, std_reward, episode_success
 
-
-def linear_schedule(initial_value: float) -> Callable[[float], float]:
-    """
-    Linear learning rate schedule.
-
-    :param initial_value: Initial learning rate.
-    :return: schedule that computes
-      current learning rate depending on remaining progress
-    """
-    def func(progress_remaining: float) -> float:
-        """
-        Progress will decrease from 1 (beginning) to 0.
-
-        :param progress_remaining:
-        :return: current learning rate
-        """
-        return progress_remaining * initial_value
-
-    return func
-
 def make_robosuite_env(env_id, options, rank, seed=0):
     """
     Utility function for multiprocessed env.
@@ -232,7 +168,8 @@ def make_robosuite_env(env_id, options, rank, seed=0):
 
     def _init():
         env = GymWrapper(suite.make(env_id, **options))
-        env = Monitor(env)
+        monitor_path = os.path.join(log_dir_callback, str(rank + 1)) if log_dir_callback is not None else None
+        env = Monitor(env, filename=monitor_path)
         # Important: use a different seed for each environment
         env.seed(seed + rank)
         return env
@@ -241,10 +178,38 @@ def make_robosuite_env(env_id, options, rank, seed=0):
     return _init
 
 
+def model_info_collect(model):
+
+    init_weights = model.get_parameters()
+    dict_csv(name=os.path.join(log_dir_extras, 'init_weights'), dict=init_weights)
+    learn_info = {}
+    learn_info['Num of envs'] = num_proc
+    learn_info['Initialization seed of NN'] = model.seed
+    learn_info['N_steps'] = model.n_steps
+    learn_info['Training steps'] = learning_steps
+    learn_info['Policy_kwargs'] = model.policy_kwargs
+    learn_info['Policy'] = model.policy
+
+    dict_csv(name=os.path.join(log_dir_extras, 'model'), dict=learn_info)
+    return
+
+def seed_initializer():
+    '''
+    Function used to define seed as well as to save it in csv file:
+        Returns:
+            seed:
+    '''
+    seed = random.randint(0, 1000)
+    print('Seed used', seed)
+    return seed
+
 if __name__ == "__main__":
     # Create log dir
-    log_dir = "robosuite/best_models/"
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = 'robosuite/'
+    log_dir_extras = os.path.join(log_dir, 'extras')
+    log_dir_callback = os.path.join(log_dir, 'callback')
+    os.makedirs(log_dir_callback, exist_ok=True)
+    os.makedirs(log_dir_extras, exist_ok=True)
 
     control_param = dict(type='IMPEDANCE_POSE_Partial', input_max=1, input_min=-1,
                          output_max=[0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
@@ -261,18 +226,25 @@ if __name__ == "__main__":
                        controller_configs=control_param, r_reach_value=0.2, tanh_value=20.0, error_type='ring',
                        control_spec=26, dist_error=0.001)
 
-    reward_callback = SaveOnBestTrainingRewardCallback(check_freq=200, log_dir=log_dir)
-
     n_steps = 10
     seed_val = 1
     num_proc = 5
+    learning_steps = 10_000
+    seed = seed_initializer()
+    # seed = 4
 
+    check_callback_every_eps = 20
+    n_call = int(check_callback_every_eps/num_proc)     # how many times' callback will be called
+    print(n_call)
+
+    reward_callback = SaveOnBestTrainingRewardCallback(mean_eps=10, check_freq=n_call, log_dir=log_dir_callback)
     env = SubprocVecEnv([make_robosuite_env(env_id, env_options, i, seed_val) for i in range(num_proc)])
 
     policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[32, 32])
     model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs, n_steps=int(n_steps/num_proc),
-                tensorboard_log="./learning_log/ppo_tensorboard/", seed=4)
+                tensorboard_log="./learning_log/ppo_tensorboard/", seed=seed)
 
-    model.learn(total_timesteps=2, tb_log_name="learning", callback=reward_callback)
+    model_info_collect(model=model)
+
+    model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback)
     print("Done")
-    # model.save('Daniel_n5_original_10envs_20steps_seed4_12k')

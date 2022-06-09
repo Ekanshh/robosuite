@@ -281,7 +281,7 @@ class MujocoEnv(metaclass=EnvMeta):
                 self.modify_observable(observable_name=obs_name, attribute="sensor", modifier=obs._sensor)
         # Make sure that all sites are toggled OFF by default
         # TODO: to view sites set False > True
-        self.visualize(vis_settings={vis: True for vis in self._visualizations})
+        self.visualize(vis_settings={vis: False for vis in self._visualizations})
         # Return new observations
         return self._get_observations(force_update=True)
 
