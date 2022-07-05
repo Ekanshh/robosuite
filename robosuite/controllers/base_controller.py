@@ -315,8 +315,7 @@ class Controller(object, metaclass=abc.ABCMeta):
                 self.init_orientation = self.desired_vec_fin[-1][1]
             else:
                 self.init_orientation = T.mat2euler(self.initial_orientation)
-                # self.init_orientation[2] = abs(self.init_orientation[2])
-                # self.init_orientation[0] = abs(self.init_orientation[0])
+
 
         self.X_init = pos_in[0]
         self.Y_init = pos_in[1]
