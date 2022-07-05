@@ -1,3 +1,5 @@
+import time
+
 from robosuite.controllers.base_controller import Controller
 from robosuite.utils.control_utils import *
 import robosuite.utils.transform_utils as T
@@ -133,6 +135,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
                  plotter=False,
                  ori_method='rotation',
                  show_params=True,
+                 total_time=0 ,
+                 use_impedance=True,
                  **kwargs  # does nothing; used so no error raised when dict is passed with extra terms used previously
                  ):
 
@@ -142,10 +146,12 @@ class ImpedancePositionBaseControllerPartial(Controller):
             joint_indexes,
             actuator_range,
         )
+        self.skip = False
         self.t_flag = None
-        self.flag1 = False
+        self.use_impedance = use_impedance
 
         # for ploting:
+        self.total_time = total_time
         self.show_params = show_params
         self.plotter = plotter
         self.method = ori_method
@@ -177,9 +183,18 @@ class ImpedancePositionBaseControllerPartial(Controller):
         kp = np.clip(kp, self.kp_min, self.kp_max)
 
         # kp kd
-        self.kp = self.nums2array(kp, 6)
+        self.kp = self.nums2array(kp, 6) #* 10
         self.kd = 2 * np.sqrt(self.kp) * damping_ratio
-        # self.kd[3:] = [3, 3, 3]
+
+        # -------- Elad PD params-------------
+        # Kp_pos = 1 * 4500 * np.ones(3)  # 5*4500*np.ones(3)
+        # Kp_ori = 1 * 100 * np.ones(3)  # 5*100*np.ones(3)
+        # self.kp = np.concatenate((Kp_pos, Kp_ori))
+        # Kd_pos = 1 * 5 * 0.707 * 2 * np.sqrt(Kp_pos)  # 5*0.707*2*np.sqrt(Kp_pos)
+        # Kd_ori = 0.707 * 2 * np.sqrt(Kp_ori)  # 2*0.707*2*np.sqrt(Kp_ori)
+        # self.kd = np.concatenate((Kd_pos, Kd_ori))
+
+
         self.kp_impedance = deepcopy(self.kp)
         self.kd_impedance = deepcopy(self.kd)
 
@@ -202,7 +217,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         self.interpolator_pos = interpolator_pos
         self.interpolator_ori = interpolator_ori
 
-        # whether or not pos and ori want to be uncoupled
+        # whether pos and ori want to be uncoupled
         self.uncoupling = uncouple_pos_ori
 
         # initialize goals based on initial pos / ori
@@ -302,7 +317,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             ori_error = self.desired_pos[3:6]
             ori_min_jerk = deepcopy(self.desired_pos[3:6])
             ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
-            # goal_ori = R.from_euler('zyx', self.goal_ori, degrees=False).as_rotvec()
             self.desired_pos[9:12] = deepcopy(self.euler2WorldAngle_vel(self.desired_pos[9:12]))
             ori_vel_min_jerk = deepcopy(self.desired_pos[9:12])
 
@@ -312,31 +326,33 @@ class ImpedancePositionBaseControllerPartial(Controller):
                 axis=0))
             self.bias = 0
 
-        # if self.ee_pos[2] <= 0.9072620333680175 and self.flag1 is False:
-        #     self.t_flag = self.time[-1]
-        #     print(self.t_flag)
-        #     self.flag1 = True
-
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-            # print('enter')
+            print()
+            print('%%%%%%%%%% Contact %%%%%%%%%%%')
 
-        if self.switch and self.enter:
-            if self.bias == 0:
-                self.impedance_vec = deepcopy(self.desired_pos)
-                self.bias = None
-                self.kp = deepcopy(np.clip(self.kp_impedance, self.kp_min, self.kp_max))
-                self.kd = deepcopy(np.clip(self.kd_impedance, 0.0, 4 * 2 * np.sqrt(self.kp) * np.sqrt(2)))
+        if self.use_impedance:
+            # print('using impedance')
+            if self.switch and self.enter:
+                if self.bias == 0:
+                    self.impedance_vec = deepcopy(self.desired_pos)
+                    self.bias = None
+                    self.kp = deepcopy(np.clip(self.kp_impedance, self.kp_min, self.kp_max))
+                    self.kd = deepcopy(np.clip(self.kd_impedance, 0.0, 4 * 2 * np.sqrt(self.kp) * np.sqrt(2)))
 
-            self.F_int = (np.concatenate(
-                (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
-                axis=0) - self.ee_sensor_bias)
+                self.F_int = (np.concatenate(
+                    (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
+                    axis=0) - self.ee_sensor_bias)
 
-            self.desired_pos = deepcopy(self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
-                                                         self.desired_pos[6:9], self.desired_pos[9:12],
-                                                         self.sim.model.opt.timestep))
-            if self.method == 'euler':
-                ori_error = self.desired_pos[3:6] - ori_real
+                self.desired_pos = deepcopy(self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
+                                                             self.desired_pos[6:9], self.desired_pos[9:12],
+                                                             self.sim.model.opt.timestep))
+                if self.method == 'euler':
+                    ori_error = self.desired_pos[3:6] - ori_real
+
+        self.F_int = (np.concatenate(
+                    (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
+                    axis=0) - self.ee_sensor_bias)
 
         if self.method == 'rotation':
             ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
@@ -356,6 +372,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         desired_torque = (np.multiply(np.array(ori_error), np.array(self.kp[3:6]))
                           + np.multiply(vel_ori_error, self.kd[3:6]))
 
+
         decoupled_wrench = np.concatenate([desired_force, desired_torque])
         self.torques = np.dot(self.J_full.T, decoupled_wrench).reshape(6, ) + self.torque_compensation
 
@@ -365,10 +382,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
         if np.isnan(self.torques).any():
             self.torques = np.zeros(6)
 
-        self.plotter = False
+        self.plotter = True
         if self.plotter:
-            if self.sim.data.time > 25.0 - 0.02 or self.switch == 200:
-                self.control_plotter()
 
             # for graphs:
             real_forces = np.dot(np.linalg.inv(self.J_full.T), self.sim.data.qfrc_actuator[:6]).reshape(6, )
@@ -579,7 +594,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             self.kp_impedance = action[-6:]
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
         if self.control_dim == 26:
-
             self.K = np.array([[abs(action[0]), 0, 0, 0, action[1], 0],
                                [0, abs(action[2]), 0, action[3], 0, 0],
                                [0, 0, abs(action[4]), 0, 0, 0],
@@ -653,7 +667,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
             self.kd_impedance[3:] = 30
 
-
             if self.show_params:
                 print('-------------------------K--------------------------------')
                 print(self.K)
@@ -674,17 +687,17 @@ class ImpedancePositionBaseControllerPartial(Controller):
                         or (contact.geom2 == gripper_geom_id and contact.geom1 in hole_geom_id)):
                     return True
         return False
-
-    def butter_lowpass(self, cutoff, fs, order=5):
-        nyq = 0.5 * fs
-        normal_cutoff = int(cutoff / nyq)
-        b = butter(order, 0.7, analog=False)
-        return b
-
-    def butter_lowpass_filter(self, data, cutoff, fs, order=5):
-        b = self.butter_lowpass(cutoff, fs, order=order)
-        y = lfilter(b[0], b[1], data)
-        return y
+    #
+    # def butter_lowpass(self, cutoff, fs, order=5):
+    #     nyq = 0.5 * fs
+    #     normal_cutoff = int(cutoff / nyq)
+    #     b = butter(order, 0.7, analog=False)
+    #     return b
+    #
+    # def butter_lowpass_filter(self, data, cutoff, fs, order=5):
+    #     b = self.butter_lowpass(cutoff, fs, order=order)
+    #     y = lfilter(b[0], b[1], data)
+    #     return y
 
 
     def save_plot_data(self):
@@ -722,13 +735,27 @@ class ImpedancePositionBaseControllerPartial(Controller):
         data["mz_des"] = self.desired_torque_z
 
         df = pd.DataFrame(data)
-        df.to_csv("data_daniel_plusx_test.csv", index=False)
+        df.to_csv("data_daniel_plus_y_1mm.csv", index=False)
 
     def control_plotter(self):
 
         # self.save_plot_data()
         t = self.time  # list(range(0, np.size(self.ee_pos_vec_x)))
         ################################################################################################################
+        idx = int(6/0.002)
+        idx2 = int(7.3 / 0.002)
+        print('min_jerk start',self.pos_min_jerk_x[0]*1000)
+        print('min_jerk end',self.pos_min_jerk_x[-1]*1000)
+        print('time', t[idx])
+        print('minimum_jerk_x',self.pos_min_jerk_x[idx]*1000)
+        print('robot_x',self.ee_pos_vec_x[idx]*1000)
+        print('diff',abs(self.pos_min_jerk_x[idx]-self.ee_pos_vec_x[idx])*1000)
+
+        print('time', t[idx2])
+        print('minimum_jerk_x', self.pos_min_jerk_x[idx2] * 1000)
+        print('robot_x', self.ee_pos_vec_x[idx2] * 1000)
+        print('diff', abs(self.pos_min_jerk_x[idx2] - self.ee_pos_vec_x[idx2]) * 1000)
+
         plt.figure()
         ax1 = plt.subplot(311)
         ax1.plot(t, self.impedance_model_pos_vec_x, 'g--', label='Xm position')
