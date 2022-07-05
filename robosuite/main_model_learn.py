@@ -43,6 +43,7 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         assert self.check_freq >= self.mean_eps, "Check freq needs to be larger than mean_eps"
 
     def _on_step(self) -> bool:
+        a = self.model
         if self.n_calls % self.check_freq == 0:
             print('----CallBack----')
             # Retrieve training reward
@@ -125,9 +126,12 @@ def evaluate(model: "base_class.BaseAlgorithm",
             episode_length += 1
             if render:
                 env.render()
+
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
+        length = sum(episode_lengths)
         episode_success += int(_info.get('is_success'))
+        print(f"Success rate {episode_success/length*100}%")
         print(f"episode number: {i},reward: {episode_reward}, episode lenght: {_info.get('time')} ")
     mean_reward = np.mean(episode_rewards)
     std_reward = np.std(episode_rewards)
@@ -188,13 +192,30 @@ if __name__ == "__main__":
     os.makedirs(log_dir_callback, exist_ok=True)
     os.makedirs(log_dir_extras, exist_ok=True)
 
+    use_impedance = False
+    plot_graphs = True
+    render = True
+    error_type = "fixed"
+
+    # total_sim_time = 25#15.0
+    # time_free_space = 2.5#5.0
+    # time_insertion = 13.5#4.0
+
+    total_sim_time = 15.0
+    time_free_space = 5.0
+    time_insertion = 4.0
+    time_impedance = total_sim_time - (time_free_space + time_insertion)
+
+    control_freq = 20
+    horizon = total_sim_time * control_freq
+
     control_param = dict(type='IMPEDANCE_POSE_Partial', input_max=1, input_min=-1,
                          output_max=[0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
                          output_min=[-0.05, -0.05, -0.05, -0.5, -0.5, -0.5], kp=700, damping_ratio=np.sqrt(2),
                          impedance_mode='fixed', kp_limits=[0, 100000], damping_ratio_limits=[0, 10],
                          position_limits=None, orientation_limits=None, uncouple_pos_ori=True, control_delta=True,
-                         interpolation=None, ramp_ratio=0.2, control_dim=26, plotter=False, ori_method='rotation',
-                         show_params=False)
+                         interpolation=None, ramp_ratio=0.2, control_dim=26, ori_method='rotation',
+                         show_params=False, total_time=total_sim_time, plotter=plot_graphs, use_impedance=use_impedance)
 
     # Notice how the environment is wrapped by the wrapper
     env = GymWrapper(
@@ -203,25 +224,28 @@ if __name__ == "__main__":
             robots="UR5e",  # use UR5e robot
             use_camera_obs=False,  # do not use pixel observations
             has_offscreen_renderer=False,  # not needed since not using pixel obs
-            has_renderer=False,  # Make sure we can render to the screen
+            has_renderer=render,  # Make sure we can render to the screen
             reward_shaping=True,
             ignore_done=False,
-            horizon=500,
-            control_freq=20,  # control should happen fast enough so that simulation looks smooth
+            plot_graphs=plot_graphs,
+            horizon=horizon,
+            time_free=time_free_space,
+            time_insertion=time_insertion,
+            control_freq=control_freq,  # control should happen fast enough so that simulation looks smooth
             controller_configs=control_param,
             r_reach_value=0.2,
             tanh_value=20.0,
-            error_type='ring',
+            error_type=error_type,
             control_spec=26,
             dist_error=0.0008
         )
     )
-    eval_steps = 50
+    eval_steps = 10
     learning_steps = 10_000
-    # seed = 4
-    seed = seed_initializer()
-    mode = 'new_train'
-    # mode = 'eval'
+    seed = 4
+    # seed = seed_initializer()
+    # mode = 'new_train'
+    mode = 'eval'
     # mode = 'continue_train'
 
     env = Monitor(env, log_dir_callback, allow_early_resets=True)
@@ -240,12 +264,12 @@ if __name__ == "__main__":
 
         model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback)
         print("------------ Done Training -------------")
-        model.save('Benchmark_after_changes')
+        model.save('Daniel_changes_test_run_bigger_error.zip')
 
     if mode == 'eval':
         print('Evaluating Model')
         # evaluation
-        model = PPO.load("./daniel_sim_results/daniel_original_benchmark/Daniel_n5_banchmark_single.zip", verbose=1,
+        model = PPO.load("./daniel_sim_results_2/simulation_2/robosuite/callback/best_model_callback.zip", verbose=1,
                          env=env)
 
     if mode == 'continue_train':
