@@ -9,7 +9,7 @@ import robosuite.utils.macros as macros
 from robosuite.models.base import MujocoModel
 import robosuite.utils.transform_utils as T
 import numpy as np
-
+SUCCESS_STEPS = 2
 REGISTERED_ENVS = {}
 
 
@@ -115,15 +115,14 @@ class MujocoEnv(metaclass=EnvMeta):
             error_type='circle',
             control_spec=36,
             trans=0.3
-    ):
 
+    ):
         # min jerk param:
         self.via_point = OrderedDict()
         self.pos_in = None
         self.trans = trans
         self.num_via_point = 0
-
-        # learning param:
+        self.end_success = False
         self.success = 0
         self.rewards_all = []
 
@@ -161,7 +160,7 @@ class MujocoEnv(metaclass=EnvMeta):
         self.model_timestep = None
         self.control_timestep = None
         self.deterministic_reset = False  # Whether to add randomized resetting of objects / robot joints
-        self.loop_time = ((1 / self.control_freq) * self.horizon)
+        self.total_time = ((1 / self.control_freq) * self.horizon)
         self.rewards_all = []
 
         # Load the model
@@ -442,19 +441,22 @@ class MujocoEnv(metaclass=EnvMeta):
             self.rewards_all.append(reward)
 
         info.update({"time": self.timestep})
-        # print(np.sum(rewards_all))
-        if self.success > 1:
+        if self.success >= SUCCESS_STEPS:
             info.update({"is_success": True})
         else:
             info.update({"is_success": False})
 
         info.update({"episode": self.timestep})
-        if self.success > 1:
+
+        if self.success >= SUCCESS_STEPS:
             print("----------------:)------------------")
-            self.rewards_all = []
             self.rewards_all = 40000
+
         else:
             print(f"Cumulative reward: {np.sum(self.rewards_all)}")
+
+        if self.plot_graphs:
+            self.robots[0].controller.control_plotter()
 
         return self._get_observations(), np.sum(self.rewards_all), done, info
 
@@ -488,12 +490,14 @@ class MujocoEnv(metaclass=EnvMeta):
         # done if number of elapsed timesteps is greater than horizon
         end_horizon = self.timestep >= self.horizon
         end_termination = self.num_via_point == 1 and self.success == -5
-        end_success = self._check_success() and self.num_via_point == 1 and self.success == 2
+        self.end_success = self._check_success() and self.num_via_point == 1 and self.success == SUCCESS_STEPS
+
         if end_horizon:
             print("End of horizon")
         if end_termination:
             print('Early termination')
-        self.done = end_termination or end_horizon or end_success
+
+        self.done = end_termination or end_horizon or self.end_success
         return reward, self.done, {}
 
     def reward(self, action):
