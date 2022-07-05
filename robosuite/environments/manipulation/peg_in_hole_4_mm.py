@@ -7,6 +7,7 @@ import random
 import robosuite.utils.transform_utils as T
 from robosuite.utils.mjcf_utils import CustomMaterial, array_to_string, find_elements, new_site
 from robosuite.utils.mjcf_utils import CustomMaterial
+from scipy.spatial.transform import Rotation as R
 
 from robosuite.environments.manipulation.single_arm_env import SingleArmEnv
 
@@ -148,12 +149,15 @@ class PegInHoleSmall(SingleArmEnv):
         render_gpu_device_id=-1,
         control_freq=20,
         horizon=1000,
+        time_free=0,
+        time_insertion=0,
         ignore_done=False,
         hard_reset=True,
         camera_names="agentview",
         camera_heights=256,
         camera_widths=256,
         camera_depths=False,
+        plot_graphs = None,
         num_via_point=0,
         dist_error=0.002,
         angle_error=0,
@@ -165,9 +169,12 @@ class PegInHoleSmall(SingleArmEnv):
         peg_length=0.03
     ):
 
+        self.plot_graphs = plot_graphs
+        self.error = None
+        self.time_free = time_free
+        self.time_insert = time_insertion
         #min jerk param:
         self.num_via_point = num_via_point
-
         # settings for table top
         self.via_point = OrderedDict()
         self.table_full_size = table_full_size
@@ -241,13 +248,14 @@ class PegInHoleSmall(SingleArmEnv):
         reward = 0
         # Right location and angle
         if self._check_success() and self.num_via_point == 1:
-            # reward = self.horizon * time_factor
-
             self.success += 1
-            if self.success == 2:
-                return reward
+            # print(self.success)
+            # if self.success == 20:
+            #
+            #     return reward
             # contact
             # Grab relevant values
+        # print(self.success)
         t, d, cos = self._compute_orientation()
         # reaching reward
         reward += self.r_reach * cos
@@ -280,11 +288,40 @@ class PegInHoleSmall(SingleArmEnv):
     def on_peg(self):
 
         res = False
+        hole_hole_z = deepcopy(self.sim.data.get_body_xpos('hole_hole'))[2] + 0.015
+        # print(self.peg_pos[2])
+        # print(hole_hole_z)
+        # print('----')
+        # print('peg_pos_goal', self.peg_pos_goal[2])
+        # print('peg_pos', self.peg_pos[2])
+        # print('diff', self.peg_pos_goal[2] >= self.peg_pos[2])
+        # print('---')
+        # print(self.peg_pos[2])
+        # print(self.table_offset[2] + 0.055)
+
+        hole_hole = deepcopy(self.sim.data.get_body_xpos("hole_hole"))
+        goal_z = hole_hole[2] + 0.015
+        # print(self.peg_pos[2])
+        # print(goal_z)
+
+
         if (
+
                 abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
                 and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
-                and self.peg_pos[2] < self.table_offset[2] + 0.055
+                # and abs(self.hole_pos[1] - self.peg_pos[1]) + abs(self.hole_pos[0] - self.peg_pos[0]) < 2e-4
+                and self.peg_pos[2] <= goal_z
+                # abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
+                # and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
+                # and self.peg_pos[2] < hole_hole_z
+                # ( np.linalg.norm(self.peg_pos_goal[:2] - self.peg_pos[:2]) <= 0.0004) and
+                # ( self.peg_pos_goal[2] + 0.003 >=  self.peg_pos[2])
+
+                # and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
+                # and self.peg_pos[2] < hole_hole_z
         ):
+
+
             res = True
         return res
 
@@ -309,11 +346,11 @@ class PegInHoleSmall(SingleArmEnv):
         mujoco_arena.set_origin([0, 0, 0])
         self.peg_z_offset = 0.9
         self.rotation = None
-        x_range = [-0.1, 0.1]
-        y_range = [-0.1, 0.1]
+        # x_range = [-0.1, 0.1]
+        # y_range = [-0.1, 0.1]
 
-        # x_range = [0.1, 0.1]
-        # y_range = [0.0, 0.0]
+        x_range = [0.0, 0.0]
+        y_range = [0.0, 0.0]
 
         # initialize objects of interest
         self.peg = CylinderObject(name='peg',
@@ -393,6 +430,10 @@ class PegInHoleSmall(SingleArmEnv):
             @sensor(modality=modality)
             def hole_pos(obs_cache):
                 return np.array(self.sim.data.body_xpos[self.hole_body_id])
+
+            # @sensor(modality=modality)
+            # def error(obs_cache):
+            #     return np.array(self.error)
 
             @sensor(modality=modality)
             def hole_quat(obs_cache):
@@ -491,10 +532,12 @@ class PegInHoleSmall(SingleArmEnv):
         horizon_dist = np.linalg.norm(self.peg_pos[:2] - self.hole_pos[:2])
         self.hor_dist = 1 - np.tanh(self.tanh_value * 2 * horizon_dist)
         self.r_reach = 1 - np.tanh(self.tanh_value * dist)
-        self.objects_on_pegs = int(
-            self.on_peg() and self.r_reach > self.r_reach_value)  # r_reach(tanh*2)=0.96, r_reach(tanh*20)=0.67
+        # print(f"On_peg() {self.on_peg()}")
+        # print(self.r_reach > self.r_reach_value)
+        # print(self.r_reach > self.r_reach_value)
+        self.objects_on_pegs = self.on_peg() and self.r_reach > self.r_reach_value  # r_reach(tanh*2)=0.96, r_reach(tanh*20)=0.67
 
-        return np.sum(self.objects_on_pegs) > 0
+        return self.objects_on_pegs
 
     def _compute_orientation(self):
         """
@@ -540,41 +583,68 @@ class PegInHoleSmall(SingleArmEnv):
 
     def reset_via_point(self):
 
-        added0 = 0.01
+        added0 = 3* self.peg_length
         added1 = 0.04
 
-        pos_via_point_0 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
+        # pos_via_point_0 = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
+        # # pos_via_point_0 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
+        # pos_via_point_0[2] = self.table_offset[2] + 0.055 + self.peg_length + 0.04 #added0
+        # pos_via_point_1 = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
+        # # pos_via_point_1 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
+        # # pos_via_point_1[2] -= added1
+        # pos_via_point_1[2] = self.table_offset[2] + 0.055 + self.peg_length   # added0
+        # # pos_via_point_1[2] += 0.04
+        # self.peg_pos_goal = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
+        # self.peg_pos_goal[2] = self.table_offset[2] + 0.055
+
+        pos_via_point_0 = deepcopy(self.sim.data.get_body_xpos("hole_hole"))
         pos_via_point_0[2] += added0
-        pos_via_point_1 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
-        pos_via_point_1[2] -= added1
+        pos_via_point_1 = deepcopy(self.sim.data.get_body_xpos("hole_hole"))
+        # pos_via_point_1[2] -= added1
+        pos_via_point_1[2] += self.peg_length + 0.012
 
         hole_angle = deepcopy(T.quat2mat(T.convert_quat(self.sim.data.get_body_xquat("hole_hole"), to="wxyz")))
         angle_desired = hole_angle
 
         trans_error = [0, 0, 0]
         if self.error_type == 'none':
-            trans_error = np.array([0, 0, 0]) * self.dist_error *0 # fixed error
+            trans_error = np.array([0.0, 0, 0]) * self.dist_error *0 # fixed error
         if self.error_type == 'fixed':
-            trans_error = np.array([0.0, 0.001, 0.0]) # fixed error
+            trans_error = np.array([0.0002, 0.0 , 0.0]) # fixed error
         if self.error_type == 'ring':
-            trans_error[:2] = random.choice(([random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1)),
-                                              random.uniform(0., self.dist_error) * random.choice((-1, 1))],
-                                             [random.uniform(0., self.dist_error) * random.choice((-1, 1)),
-                                              random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1))]))
+            r_low = 0.0006
+            r_high = 0.001
+            # r_low = 0.0004
+            # r_high = 0.0008
+            r = random.uniform(r_low, r_high)
+            theta = random.uniform(0, 2 * np.pi)
+            x_error = r * np.cos(theta)
+            y_error = r * np.sin(theta)
+            # #
+            trans_error[:2] = np.array([x_error, y_error])
+
+            #
+            # trans_error[:2] = random.choice(([random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1)),
+            #                                   random.uniform(0., self.dist_error) * random.choice((-1, 1))],
+            #                                  [random.uniform(0., self.dist_error) * random.choice((-1, 1)),
+            #                                   random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1))]))
         if self.error_type == 'fixed_dir':
             x_error = random.uniform(0.002, self.dist_error) * 5.1    # -1,1,0
             y_error = random.uniform(0.0012, self.dist_error) * 0  # -1,1,0
             trans_error = np.array([x_error, y_error, 0])
-
+        # print(trans_error)
         trans_error[2] = 0
-        # print(f"Error is {trans_error}")
-        angle_error = ((np.random.rand(3) - 0.5) * 2) * (np.pi / 2) * self.angle_error
+        print(f"Error is {trans_error}")
+        self.error = deepcopy(trans_error)
+        # angle_error = ((np.random.rand(3) - 0.5) * 2) * (np.pi / 2) * self.angle_error
 
-        # via_point_0 = np.concatenate((pos_via_point_0 + trans_error, angle_desired + angle_error), axis=-1)
-        # via_point_1 = np.concatenate((pos_via_point_1 + trans_error, angle_desired + angle_error), axis=-1)
+        # # daniel
+        # rot_vec = np.sqrt(0.5) * np.array([np.pi, np.pi, 0.00])  # ori_init ## np.array([np.pi, 0, 0])
+        # angle_desired1 = R.from_rotvec(rot_vec).as_matrix()
 
         self.via_point['p0'] = pos_via_point_0 + trans_error
         self.via_point['o0'] = angle_desired
-
         self.via_point['p1'] = pos_via_point_1 + trans_error
         self.via_point['o1'] = angle_desired
+
+
