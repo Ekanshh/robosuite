@@ -60,8 +60,9 @@ class SingleArm(Manipulator):
             robot_type: str,
             idn=0,
             controller_config=None,
-            initial_qpos=np.array([-0.16519503, -0.98093438,  1.38357943, -1.95161921, -1.59297872, 1.3786325]),
-            #np.array([-0.18048786, -0.78735011,  0.86686915, -1.64845195, -1.57110246, 1.38801786]),
+            initial_qpos=np.array([-0.22, -1.2, 1.5745819, -1.91207876, -1.57039959, 1.3786325]),
+            #shirs: [-0.16519503, -0.98093438,  1.38357943, -1.95161921, -1.59297872, 1.3786325]
+            # elad: [-0.22, -1.2, 1.5745819, -1.91207876, -1.57039959, 1.3786325]
             initialization_noise=None,
             mount_type="default",
             gripper_type="default",
