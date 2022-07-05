@@ -128,7 +128,7 @@ class RobotEnv(MujocoEnv):
         camera_widths=256,
         camera_depths=False,
         robot_configs=None,
-        trans=0.1,
+        trans=0.1,#1/3,#0.1,
         dist_error=0.002,
         tanh_value=2.0,
         r_reach_value=0.96,
@@ -488,17 +488,29 @@ class RobotEnv(MujocoEnv):
         # Update robot joints based on controller actions
         cutoff = 0
         for idx, robot in enumerate(self.robots):
-
-            if self.num_via_point == 0 and self.timestep == round((self.horizon * self.trans)):
-                self.num_via_point += 1
-                robot.t_finial = self.loop_time * (1 - self.trans) * 0.6
+            # first minimum jerk trajectory
             if self.num_via_point == 0 and self.sim.data.time == 0:
-                robot.t_finial = self.loop_time * self.trans
+                robot.t_finial = self.time_free
                 robot.via_point = self.via_point
-            # print(self.num_via_point)
+            # second minimum jerk trajectory
+            if self.num_via_point == 0 and self.timestep == round(self.time_free*self.control_freq):
+                self.num_via_point += 1
+                robot.t_finial = self.time_insert  # 0.4 #0.6
+                # print(self.total_time * (1 - self.trans) * 0.4)
+
+            # # second minimum jerk trajectory
+            # if self.num_via_point == 0 and self.timestep == round((self.horizon * self.trans)):
+            #     self.num_via_point += 1
+            #     robot.t_finial = self.total_time * (1 - self.trans) * 0.6#0.4 #0.6
+            #     # print(self.total_time * (1 - self.trans) * 0.4)
+            #
+            # # first minimum jerk trajectory
+            # if self.num_via_point == 0 and self.sim.data.time == 0:
+            #     robot.t_finial = self.total_time * self.trans
+            #     robot.via_point = self.via_point
+
+                # print(self.total_time * self.trans)
             robot.via_point_switch = self.num_via_point
-            if self.success > 0:
-                robot.via_point_switch = 200
 
             robot_action = action[cutoff:cutoff+robot.action_dim]
             robot.control(robot_action, policy_step=policy_step)
