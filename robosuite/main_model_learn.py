@@ -193,9 +193,9 @@ if __name__ == "__main__":
     os.makedirs(log_dir_extras, exist_ok=True)
 
     use_impedance = False
-    plot_graphs = True
-    render = True
-    error_type = "fixed"
+    plot_graphs = False
+    render = False
+    error_type = "ring"
 
     # total_sim_time = 25#15.0
     # time_free_space = 2.5#5.0
@@ -240,7 +240,7 @@ if __name__ == "__main__":
             dist_error=0.0008
         )
     )
-    eval_steps = 10
+    eval_steps = 50
     learning_steps = 10_000
     seed = 4
     # seed = seed_initializer()

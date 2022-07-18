@@ -135,7 +135,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
                  plotter=False,
                  ori_method='rotation',
                  show_params=True,
-                 total_time=0 ,
+                 total_time=0,
                  use_impedance=True,
                  **kwargs  # does nothing; used so no error raised when dict is passed with extra terms used previously
                  ):
@@ -183,7 +183,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         kp = np.clip(kp, self.kp_min, self.kp_max)
 
         # kp kd
-        self.kp = self.nums2array(kp, 6) #* 10
+        self.kp = self.nums2array(kp, 6)  # * 10
         self.kd = 2 * np.sqrt(self.kp) * damping_ratio
 
         # -------- Elad PD params-------------
@@ -193,7 +193,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
         # Kd_pos = 1 * 5 * 0.707 * 2 * np.sqrt(Kp_pos)  # 5*0.707*2*np.sqrt(Kp_pos)
         # Kd_ori = 0.707 * 2 * np.sqrt(Kp_ori)  # 2*0.707*2*np.sqrt(Kp_ori)
         # self.kd = np.concatenate((Kd_pos, Kd_ori))
-
 
         self.kp_impedance = deepcopy(self.kp)
         self.kd_impedance = deepcopy(self.kd)
@@ -329,36 +328,40 @@ class ImpedancePositionBaseControllerPartial(Controller):
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
             print()
-            print('%%%%%%%%%% Contact %%%%%%%%%%%')
+            print('%%%%%%%%%% Contact established %%%%%%%%%%%')
 
-        if self.use_impedance:
-            # print('using impedance')
-            if self.switch and self.enter:
-                if self.bias == 0:
-                    self.impedance_vec = deepcopy(self.desired_pos)
-                    self.bias = None
-                    self.kp = deepcopy(np.clip(self.kp_impedance, self.kp_min, self.kp_max))
-                    self.kd = deepcopy(np.clip(self.kd_impedance, 0.0, 4 * 2 * np.sqrt(self.kp) * np.sqrt(2)))
+        if self.switch and self.enter:
+            if self.bias == 0:
+                self.impedance_vec = deepcopy(self.desired_pos)
+                self.bias = None
+                self.kp = deepcopy(np.clip(self.kp_impedance, self.kp_min, self.kp_max))
+                self.kd = deepcopy(np.clip(self.kd_impedance, 0.0, 4 * 2 * np.sqrt(self.kp) * np.sqrt(2)))
 
-                self.F_int = (np.concatenate(
-                    (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
-                    axis=0) - self.ee_sensor_bias)
+            self.F_int = (np.concatenate(
+                (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
+                axis=0) - self.ee_sensor_bias)
 
-                self.desired_pos = deepcopy(self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
-                                                             self.desired_pos[6:9], self.desired_pos[9:12],
-                                                             self.sim.model.opt.timestep))
-                if self.method == 'euler':
-                    ori_error = self.desired_pos[3:6] - ori_real
+            if self.use_impedance:
+                print('using impedance')
+                self.desired_pos = deepcopy(
+                    self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
+                                     self.desired_pos[6:9], self.desired_pos[9:12],
+                                     self.sim.model.opt.timestep))
+            if self.method == 'euler':
+                ori_error = self.desired_pos[3:6] - ori_real
 
         self.F_int = (np.concatenate(
-                    (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
-                    axis=0) - self.ee_sensor_bias)
+            (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
+            axis=0) - self.ee_sensor_bias)
 
         if self.method == 'rotation':
             ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
             ori_error = self.desired_pos[3:6] - ori_real
 
         vel_ori_error = self.desired_pos[9:12] - self.ee_ori_vel
+
+        # print(self.kp)
+        # print(self.kd)
 
         # Compute desired force and torque based on errors
         position_error = self.desired_pos[:3].T - self.ee_pos
@@ -371,7 +374,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         desired_torque = (np.multiply(np.array(ori_error), np.array(self.kp[3:6]))
                           + np.multiply(vel_ori_error, self.kd[3:6]))
-
 
         decoupled_wrench = np.concatenate([desired_force, desired_torque])
         self.torques = np.dot(self.J_full.T, decoupled_wrench).reshape(6, ) + self.torque_compensation
@@ -687,6 +689,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
                         or (contact.geom2 == gripper_geom_id and contact.geom1 in hole_geom_id)):
                     return True
         return False
+
     #
     # def butter_lowpass(self, cutoff, fs, order=5):
     #     nyq = 0.5 * fs
@@ -698,7 +701,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
     #     b = self.butter_lowpass(cutoff, fs, order=order)
     #     y = lfilter(b[0], b[1], data)
     #     return y
-
 
     def save_plot_data(self):
         data = {}
@@ -742,14 +744,14 @@ class ImpedancePositionBaseControllerPartial(Controller):
         # self.save_plot_data()
         t = self.time  # list(range(0, np.size(self.ee_pos_vec_x)))
         ################################################################################################################
-        idx = int(6/0.002)
+        idx = int(6 / 0.002)
         idx2 = int(7.3 / 0.002)
-        print('min_jerk start',self.pos_min_jerk_x[0]*1000)
-        print('min_jerk end',self.pos_min_jerk_x[-1]*1000)
+        print('min_jerk start', self.pos_min_jerk_x[0] * 1000)
+        print('min_jerk end', self.pos_min_jerk_x[-1] * 1000)
         print('time', t[idx])
-        print('minimum_jerk_x',self.pos_min_jerk_x[idx]*1000)
-        print('robot_x',self.ee_pos_vec_x[idx]*1000)
-        print('diff',abs(self.pos_min_jerk_x[idx]-self.ee_pos_vec_x[idx])*1000)
+        print('minimum_jerk_x', self.pos_min_jerk_x[idx] * 1000)
+        print('robot_x', self.ee_pos_vec_x[idx] * 1000)
+        print('diff', abs(self.pos_min_jerk_x[idx] - self.ee_pos_vec_x[idx]) * 1000)
 
         print('time', t[idx2])
         print('minimum_jerk_x', self.pos_min_jerk_x[idx2] * 1000)
@@ -895,4 +897,3 @@ class ImpedancePositionBaseControllerPartial(Controller):
         ax3.legend()
         ax3.set_title('Mz [Nm]')
         plt.show()
-
