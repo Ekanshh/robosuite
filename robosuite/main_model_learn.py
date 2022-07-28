@@ -192,18 +192,23 @@ if __name__ == "__main__":
     os.makedirs(log_dir_callback, exist_ok=True)
     os.makedirs(log_dir_extras, exist_ok=True)
 
-    use_impedance = False
+    use_impedance = True
     plot_graphs = False
-    render = False
+    render = True
     error_type = "ring"
 
-    # total_sim_time = 25#15.0
-    # time_free_space = 2.5#5.0
-    # time_insertion = 13.5#4.0
-
-    total_sim_time = 15.0
-    time_free_space = 5.0
-    time_insertion = 4.0
+# shir
+    total_sim_time = 25
+    time_free_space = 2.5
+    time_insertion = 13.5
+# daniel - long
+    # total_sim_time = 35.0
+    # time_free_space = 5
+    # time_insertion = 25.0
+# elad
+#     total_sim_time = 15.0
+#     time_free_space = 5.0
+#     time_insertion = 4.0
     time_impedance = total_sim_time - (time_free_space + time_insertion)
 
     control_freq = 20
@@ -245,7 +250,7 @@ if __name__ == "__main__":
     seed = 4
     # seed = seed_initializer()
     # mode = 'new_train'
-    mode = 'eval'
+    mode = 'new_train'
     # mode = 'continue_train'
 
     env = Monitor(env, log_dir_callback, allow_early_resets=True)

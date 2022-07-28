@@ -128,52 +128,53 @@ class PegInHoleSmall(SingleArmEnv):
     """
 
     def __init__(
-        self,
-        robots,
-        env_configuration="default",
-        controller_configs=None,
-        gripper_types="default",
-        initialization_noise="default",
-        table_full_size=(0.8, 0.8, 0.05),
-        table_friction=(1., 5e-3, 1e-4),
-        use_camera_obs=True,
-        use_object_obs=True,
-        reward_scale=1.0,
-        reward_shaping=False,
-        placement_initializer=None,
-        has_renderer=False,
-        has_offscreen_renderer=True,
-        render_camera="robot0_robotview",   #('frontview', 'birdview', 'agentview', 'sideview', 'robot0_robotview', 'robot0_eye_in_hand').
-        render_collision_mesh=False,
-        render_visual_mesh=True,
-        render_gpu_device_id=-1,
-        control_freq=20,
-        horizon=1000,
-        time_free=0,
-        time_insertion=0,
-        ignore_done=False,
-        hard_reset=True,
-        camera_names="agentview",
-        camera_heights=256,
-        camera_widths=256,
-        camera_depths=False,
-        plot_graphs = None,
-        num_via_point=0,
-        dist_error=0.002,
-        angle_error=0,
-        tanh_value=2.0,
-        r_reach_value=0.94,
-        error_type='circle',
-        control_spec=36,
-        peg_radius=0.0021,  # (0.00125, 0.00125)
-        peg_length=0.03
+            self,
+            robots,
+            env_configuration="default",
+            controller_configs=None,
+            gripper_types="default",
+            initialization_noise="default",
+            table_full_size=(0.8, 0.8, 0.05),
+            table_friction=(1., 5e-3, 1e-4),
+            use_camera_obs=True,
+            use_object_obs=True,
+            reward_scale=1.0,
+            reward_shaping=False,
+            placement_initializer=None,
+            has_renderer=False,
+            has_offscreen_renderer=True,
+            render_camera="robot0_robotview",
+            # ('frontview', 'birdview', 'agentview', 'sideview', 'robot0_robotview', 'robot0_eye_in_hand').
+            render_collision_mesh=False,
+            render_visual_mesh=True,
+            render_gpu_device_id=-1,
+            control_freq=20,
+            horizon=1000,
+            time_free=0,
+            time_insertion=0,
+            ignore_done=False,
+            hard_reset=True,
+            camera_names="agentview",
+            camera_heights=256,
+            camera_widths=256,
+            camera_depths=False,
+            plot_graphs=None,
+            num_via_point=0,
+            dist_error=0.002,
+            angle_error=0,
+            tanh_value=2.0,
+            r_reach_value=0.94,
+            error_type='circle',
+            control_spec=36,
+            peg_radius=0.0021,  # (0.00125, 0.00125)
+            peg_length=0.03
     ):
 
         self.plot_graphs = plot_graphs
         self.error = None
         self.time_free = time_free
         self.time_insert = time_insertion
-        #min jerk param:
+        # min jerk param:
         self.num_via_point = num_via_point
         # settings for table top
         self.via_point = OrderedDict()
@@ -249,38 +250,20 @@ class PegInHoleSmall(SingleArmEnv):
         # Right location and angle
         if self._check_success() and self.num_via_point == 1:
             self.success += 1
-            # print(self.success)
-            # if self.success == 20:
-            #
-            #     return reward
-            # contact
-            # Grab relevant values
-        # print(self.success)
-        t, d, cos = self._compute_orientation()
-        # reaching reward
-        reward += self.r_reach * cos
-        # print('reach', self.r_reach*cos)
-        reward += self.hor_dist * 5
-        # print('horizontal', self.hor_dist*50)
-        reward += cos
-        # print('cos',cos)
 
-        # hole_center = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("hole_middle_cylinder")])
-        # peg_end = np.array(self.sim.data.site_xpos[self.sim.model.site_name2id("peg_site")])
-        # horizon_dist = np.linalg.norm(peg_end[:2] - hole_center[:2])
-        # vert_dist = np.abs(peg_end[-1] - hole_center[-1])
-        # # # TODO rewards
-            # hor_reward = -0.01 * np.tanh(200 * (horizon_dist- 0.0075)) * 10000
-            # vert_reward = -0.1 * np.tanh(10 * (vert_dist - 0.075)) * 1000
+        t, d, cos = self._compute_orientation()
+        reward += self.r_reach * cos
+        reward += self.hor_dist * 5
+        reward += cos
 
         if self.reward_scale is not None:
             reward *= self.reward_scale
 
         if (self.num_via_point == 1
                 and (abs(self.hole_pos[0] - self.peg_pos[0]) > 0.045
-                      or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
+                     or abs(self.hole_pos[1] - self.peg_pos[1]) > 0.014
                      or self.peg_pos[2] > self.table_offset[2] + 0.1)):
-            # print('fail')
+
             self.success -= 1
 
         return reward
@@ -288,40 +271,11 @@ class PegInHoleSmall(SingleArmEnv):
     def on_peg(self):
 
         res = False
-        hole_hole_z = deepcopy(self.sim.data.get_body_xpos('hole_hole'))[2] + 0.015
-        # print(self.peg_pos[2])
-        # print(hole_hole_z)
-        # print('----')
-        # print('peg_pos_goal', self.peg_pos_goal[2])
-        # print('peg_pos', self.peg_pos[2])
-        # print('diff', self.peg_pos_goal[2] >= self.peg_pos[2])
-        # print('---')
-        # print(self.peg_pos[2])
-        # print(self.table_offset[2] + 0.055)
-
         hole_hole = deepcopy(self.sim.data.get_body_xpos("hole_hole"))
         goal_z = hole_hole[2] + 0.015
-        # print(self.peg_pos[2])
-        # print(goal_z)
-
-
-        if (
-
-                abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
+        if (abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
                 and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
-                # and abs(self.hole_pos[1] - self.peg_pos[1]) + abs(self.hole_pos[0] - self.peg_pos[0]) < 2e-4
-                and self.peg_pos[2] <= goal_z
-                # abs(self.hole_pos[0] - self.peg_pos[0]) < 0.0007
-                # and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
-                # and self.peg_pos[2] < hole_hole_z
-                # ( np.linalg.norm(self.peg_pos_goal[:2] - self.peg_pos[:2]) <= 0.0004) and
-                # ( self.peg_pos_goal[2] + 0.003 >=  self.peg_pos[2])
-
-                # and abs(self.hole_pos[1] - self.peg_pos[1]) < 0.0007
-                # and self.peg_pos[2] < hole_hole_z
-        ):
-
-
+                and self.peg_pos[2] <= goal_z):
             res = True
         return res
 
@@ -335,7 +289,7 @@ class PegInHoleSmall(SingleArmEnv):
         xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
         self.robots[0].robot_model.set_base_xpos(xpos)
 
-        # load model for table top workspace
+        # load model for tabletop workspace
         mujoco_arena = TableArena(
             table_full_size=self.table_full_size,
             table_friction=self.table_friction,
@@ -346,11 +300,12 @@ class PegInHoleSmall(SingleArmEnv):
         mujoco_arena.set_origin([0, 0, 0])
         self.peg_z_offset = 0.9
         self.rotation = None
-        # x_range = [-0.1, 0.1]
-        # y_range = [-0.1, 0.1]
+        # TODO: randomization of peg position
+        x_range = [-0.1, 0.1]
+        y_range = [-0.1, 0.1]
 
-        x_range = [0.0, 0.0]
-        y_range = [0.0, 0.0]
+        # x_range = [0.0, 0.0]
+        # y_range = [0.0, 0.0]
 
         # initialize objects of interest
         self.peg = CylinderObject(name='peg',
@@ -366,10 +321,10 @@ class PegInHoleSmall(SingleArmEnv):
         peg_obj.append(new_site(name="peg_site", pos=(0, 0, self.peg_length), size=(0.0005,)))
         # append the object top the gripper (attach body to body)
         # main_eef = self.robots[0].robot_model.eef_name    # 'robot0_right_hand'
-        main_eef = self.robots[0].gripper.bodies[1]     # 'gripper0_eef' body
-        main_model = self.robots[0].robot_model     # <robosuite.models.robots.manipulators.ur5e_robot.UR5e at 0x7fd9ead87ca0>
+        main_eef = self.robots[0].gripper.bodies[1]  # 'gripper0_eef' body
+        main_model = self.robots[0].robot_model  # <robosuite.models.robots.manipulators.ur5e_robot.UR5e at 0x7fd9ead87ca0>
         main_body = find_elements(root=main_model.worldbody, tags="body", attribs={"name": main_eef}, return_first=True)
-        main_body.append(peg_obj)   # attach body to body
+        main_body.append(peg_obj)  # attach body to body
 
         if self.rotation is None:
             rot_angle = np.random.uniform(high=2 * np.pi, low=0)
@@ -381,7 +336,9 @@ class PegInHoleSmall(SingleArmEnv):
             rot_angle = self.rotation
 
         hole_rot_set = str(np.array([np.cos(rot_angle / 2), 0, 0, np.sin(rot_angle / 2)]))
-        hole_pos_set = np.array([np.random.uniform(high=x_range[0], low=x_range[1]), np.random.uniform(high=y_range[0], low=y_range[1]), 0.9])
+        hole_pos_set = np.array(
+            [np.random.uniform(high=x_range[0], low=x_range[1]), np.random.uniform(high=y_range[0], low=y_range[1]),
+             0.9])
         hole_pos_str = ' '.join(map(str, hole_pos_set))
         hole_rot_str = ' '.join(map(str, hole_rot_set))
 
@@ -398,7 +355,8 @@ class PegInHoleSmall(SingleArmEnv):
 
         # Make sure to add relevant assets from peg and hole objects
         self.model.merge_assets(self.peg)
-        # self.model.save_model('/home/danieln1/Downloads/original_n5/robosuite/siemens/full_model_comparison.xml',True)
+        # TODO: used to save full XML
+        # self.model.save_model('/home/danieln1/Desktop/latest_code/robosuite//siemens/test.xml',True)
 
     def _setup_references(self):
         """
@@ -430,10 +388,6 @@ class PegInHoleSmall(SingleArmEnv):
             @sensor(modality=modality)
             def hole_pos(obs_cache):
                 return np.array(self.sim.data.body_xpos[self.hole_body_id])
-
-            # @sensor(modality=modality)
-            # def error(obs_cache):
-            #     return np.array(self.error)
 
             @sensor(modality=modality)
             def hole_quat(obs_cache):
@@ -488,7 +442,6 @@ class PegInHoleSmall(SingleArmEnv):
         self.t_bias = 0
         self.reset_via_point()
 
-
     def visualize(self, vis_settings):
         """
         In addition to super call, visualize gripper site proportional to the distance to the peg.
@@ -513,18 +466,16 @@ class PegInHoleSmall(SingleArmEnv):
             bool: True if peg is placed in hole correctly
         """
         #   TODO - _check_success(self) - change this function
-        #   calculat pegs end position.
+        #   calculate pegs end position.
         self.r_reach = 0
         self.hor_dist = 0
         peg_mat = self.sim.data.body_xmat[self.peg_body_id]
         peg_mat.shape = (3, 3)
-        peg_pos_center = self.sim.data.body_xpos[self.peg_body_id]
-        handquat = T.convert_quat(self.sim.data.get_body_xquat("robot0_right_hand"), to="xyzw")
-        handDCM = T.quat2mat(handquat)
-        self.peg_pos = self.sim.data.get_site_xpos(
-            "peg_site")  # peg_pos_center + (handDCM @ [0, 0, 2*self.peg_length]).T
+        self.peg_pos = self.sim.data.get_site_xpos("peg_site")
 
-        self.hole_pos = self.sim.data.get_site_xpos("hole_middle_cylinder")
+        # TODO I changed here from Shirs "hole_middle_cylinder" > "hole_hole"
+        # self.hole_pos = self.sim.data.get_site_xpos("hole_middle_cylinder")
+        self.hole_pos = self.sim.data.get_body_xpos("hole_hole")
         hole_mat = self.sim.data.body_xmat[self.sim.model.body_name2id("hole_hole")]
         hole_mat.shape = (3, 3)
 
@@ -532,10 +483,8 @@ class PegInHoleSmall(SingleArmEnv):
         horizon_dist = np.linalg.norm(self.peg_pos[:2] - self.hole_pos[:2])
         self.hor_dist = 1 - np.tanh(self.tanh_value * 2 * horizon_dist)
         self.r_reach = 1 - np.tanh(self.tanh_value * dist)
-        # print(f"On_peg() {self.on_peg()}")
-        # print(self.r_reach > self.r_reach_value)
-        # print(self.r_reach > self.r_reach_value)
-        self.objects_on_pegs = self.on_peg() and self.r_reach > self.r_reach_value  # r_reach(tanh*2)=0.96, r_reach(tanh*20)=0.67
+
+        self.objects_on_pegs = self.on_peg() and self.r_reach > self.r_reach_value
 
         return self.objects_on_pegs
 
@@ -583,19 +532,7 @@ class PegInHoleSmall(SingleArmEnv):
 
     def reset_via_point(self):
 
-        added0 = 3* self.peg_length
-        added1 = 0.04
-
-        # pos_via_point_0 = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
-        # # pos_via_point_0 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
-        # pos_via_point_0[2] = self.table_offset[2] + 0.055 + self.peg_length + 0.04 #added0
-        # pos_via_point_1 = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
-        # # pos_via_point_1 = deepcopy(self.sim.data.get_site_xpos("hole_middle_cylinder"))
-        # # pos_via_point_1[2] -= added1
-        # pos_via_point_1[2] = self.table_offset[2] + 0.055 + self.peg_length   # added0
-        # # pos_via_point_1[2] += 0.04
-        # self.peg_pos_goal = deepcopy(self.sim.data.get_body_xpos('hole_hole'))
-        # self.peg_pos_goal[2] = self.table_offset[2] + 0.055
+        added0 = 3 * self.peg_length
 
         pos_via_point_0 = deepcopy(self.sim.data.get_body_xpos("hole_hole"))
         pos_via_point_0[2] += added0
@@ -608,9 +545,9 @@ class PegInHoleSmall(SingleArmEnv):
 
         trans_error = [0, 0, 0]
         if self.error_type == 'none':
-            trans_error = np.array([0.0, 0, 0]) * self.dist_error *0 # fixed error
+            trans_error = np.array([0.0, 0, 0]) * self.dist_error * 0  # fixed error
         if self.error_type == 'fixed':
-            trans_error = np.array([0.002, 0.0, 0.0]) # fixed error
+            trans_error = np.array([0.0004, 0.000, 0.0])  # fixed error
         if self.error_type == 'ring':
             r_low = 0.0004
             r_high = 0.0008
@@ -627,11 +564,12 @@ class PegInHoleSmall(SingleArmEnv):
             #                                  [random.uniform(0., self.dist_error) * random.choice((-1, 1)),
             #                                   random.uniform(0.5*self.dist_error, self.dist_error) * random.choice((-1, 1))]))
         if self.error_type == 'fixed_dir':
-            x_error = random.uniform(0.002, self.dist_error) * 5.1    # -1,1,0
+            x_error = random.uniform(0.002, self.dist_error) * 5.1  # -1,1,0
             y_error = random.uniform(0.0012, self.dist_error) * 0  # -1,1,0
             trans_error = np.array([x_error, y_error, 0])
         # print(trans_error)
         trans_error[2] = 0
+        print()
         print(f"Error is {trans_error}")
         self.error = deepcopy(trans_error)
         # angle_error = ((np.random.rand(3) - 0.5) * 2) * (np.pi / 2) * self.angle_error
@@ -644,5 +582,3 @@ class PegInHoleSmall(SingleArmEnv):
         self.via_point['o0'] = angle_desired
         self.via_point['p1'] = pos_via_point_1 + trans_error
         self.via_point['o1'] = angle_desired
-
-

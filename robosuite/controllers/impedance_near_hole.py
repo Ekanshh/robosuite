@@ -183,7 +183,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
         kp = np.clip(kp, self.kp_min, self.kp_max)
 
         # kp kd
-        self.kp = self.nums2array(kp, 6)  # * 10
+
+        self.kp = self.nums2array(kp, 6)
         self.kd = 2 * np.sqrt(self.kp) * damping_ratio
 
         # -------- Elad PD params-------------
@@ -327,7 +328,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-            print()
+
             print('%%%%%%%%%% Contact established %%%%%%%%%%%')
 
         if self.switch and self.enter:
@@ -342,7 +343,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
                 axis=0) - self.ee_sensor_bias)
 
             if self.use_impedance:
-                print('using impedance')
                 self.desired_pos = deepcopy(
                     self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
                                      self.desired_pos[6:9], self.desired_pos[9:12],
@@ -359,9 +359,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             ori_error = self.desired_pos[3:6] - ori_real
 
         vel_ori_error = self.desired_pos[9:12] - self.ee_ori_vel
-
-        # print(self.kp)
-        # print(self.kd)
 
         # Compute desired force and torque based on errors
         position_error = self.desired_pos[:3].T - self.ee_pos
@@ -616,6 +613,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
                                [0, 0, 0, abs(action[23]), 0, 0],
                                [0, 0, 0, 0, abs(action[24]), 0],
                                [0, 0, 0, 0, 0, abs(action[25])]])
+
             # self.K = np.array([[24.51158142, 0., 0., 0., -42.63611603, 0.],
             #                    [0., 40.25193405, 0., 26.59643364, 0., 0.],
             #                    [0., 0., 23.69382477, 0., 0., 0.],
@@ -639,9 +637,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
             self.kp_impedance = np.array([700., 500., 100., 450., 450., 450.])
             self.kd_impedance = 2 * np.sqrt(self.kp_impedance) * np.sqrt(2)
             self.kd_impedance[3:] = 30
-            # print(self.K)
-            # print(self.C)
-            # print(self.M)
 
         if self.control_dim == 18:
             self.K = np.array([[abs(action[0]), 0, 0, 0, 0, 0],
@@ -690,18 +685,6 @@ class ImpedancePositionBaseControllerPartial(Controller):
                     return True
         return False
 
-    #
-    # def butter_lowpass(self, cutoff, fs, order=5):
-    #     nyq = 0.5 * fs
-    #     normal_cutoff = int(cutoff / nyq)
-    #     b = butter(order, 0.7, analog=False)
-    #     return b
-    #
-    # def butter_lowpass_filter(self, data, cutoff, fs, order=5):
-    #     b = self.butter_lowpass(cutoff, fs, order=order)
-    #     y = lfilter(b[0], b[1], data)
-    #     return y
-
     def save_plot_data(self):
         data = {}
         data["time"] = self.time
@@ -743,20 +726,20 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         # self.save_plot_data()
         t = self.time  # list(range(0, np.size(self.ee_pos_vec_x)))
-        ################################################################################################################
-        idx = int(6 / 0.002)
-        idx2 = int(7.3 / 0.002)
-        print('min_jerk start', self.pos_min_jerk_x[0] * 1000)
-        print('min_jerk end', self.pos_min_jerk_x[-1] * 1000)
-        print('time', t[idx])
-        print('minimum_jerk_x', self.pos_min_jerk_x[idx] * 1000)
-        print('robot_x', self.ee_pos_vec_x[idx] * 1000)
-        print('diff', abs(self.pos_min_jerk_x[idx] - self.ee_pos_vec_x[idx]) * 1000)
-
-        print('time', t[idx2])
-        print('minimum_jerk_x', self.pos_min_jerk_x[idx2] * 1000)
-        print('robot_x', self.ee_pos_vec_x[idx2] * 1000)
-        print('diff', abs(self.pos_min_jerk_x[idx2] - self.ee_pos_vec_x[idx2]) * 1000)
+        # ################################################################################################################
+        # idx = int(6 / 0.002)
+        # idx2 = int(7.3 / 0.002)
+        # print('min_jerk start', self.pos_min_jerk_x[0] * 1000)
+        # print('min_jerk end', self.pos_min_jerk_x[-1] * 1000)
+        # print('time', t[idx])
+        # print('minimum_jerk_x', self.pos_min_jerk_x[idx] * 1000)
+        # print('robot_x', self.ee_pos_vec_x[idx] * 1000)
+        # print('diff', abs(self.pos_min_jerk_x[idx] - self.ee_pos_vec_x[idx]) * 1000)
+        #
+        # print('time', t[idx2])
+        # print('minimum_jerk_x', self.pos_min_jerk_x[idx2] * 1000)
+        # print('robot_x', self.ee_pos_vec_x[idx2] * 1000)
+        # print('diff', abs(self.pos_min_jerk_x[idx2] - self.ee_pos_vec_x[idx2]) * 1000)
 
         plt.figure()
         ax1 = plt.subplot(311)

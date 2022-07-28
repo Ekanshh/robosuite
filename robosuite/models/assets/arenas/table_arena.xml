@@ -20,6 +20,10 @@
   <worldbody>
     <!-- Floor -->
     <geom condim="3" material="floorplane" name="floor" pos="0 0 0" size="3 3 .125" type="plane"/>
+    <site name="floor_x" pos="0.1 0 0" size="0.01 0.01 0.01" rgba="1 0 0 0.5" type="sphere" group="1"/>
+    <site name="floor_y" pos="0 0.1 0" size="0.01 0.01 0.01" rgba="0 1 0 0.5" type="sphere" group="1"/>
+    <site name="floor_z" pos="0 0 0.1" size="0.01 0.01 0.01" rgba="0 0 1 0.5" type="sphere" group="1"/>
+
     <!-- Walls (visual only) -->
     <geom pos="-1.25 2.25 1.5" quat="0.6532815 0.6532815 0.2705981 0.2705981" size="1.06 1.5 0.01" type="box" conaffinity="0" contype="0" group="1" name="wall_leftcorner_visual" material="walls_mat"/>
     <geom pos="-1.25 -2.25 1.5" quat="0.6532815 0.6532815 -0.2705981 -0.2705981" size="1.06 1.5 0.01" type="box" conaffinity="0" contype="0" group="1" name="wall_rightcorner_visual" material="walls_mat"/>
