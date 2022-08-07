@@ -192,13 +192,14 @@ if __name__ == "__main__":
     os.makedirs(log_dir_callback, exist_ok=True)
     os.makedirs(log_dir_extras, exist_ok=True)
 
+    use_spiral = False
     use_impedance = True
     plot_graphs = False
-    render = True
+    render = False
     error_type = "ring"
 
 # shir
-    total_sim_time = 25
+    total_sim_time = 25 #+ 20 #+ 20
     time_free_space = 2.5
     time_insertion = 13.5
 # daniel - long
@@ -220,7 +221,8 @@ if __name__ == "__main__":
                          impedance_mode='fixed', kp_limits=[0, 100000], damping_ratio_limits=[0, 10],
                          position_limits=None, orientation_limits=None, uncouple_pos_ori=True, control_delta=True,
                          interpolation=None, ramp_ratio=0.2, control_dim=26, ori_method='rotation',
-                         show_params=False, total_time=total_sim_time, plotter=plot_graphs, use_impedance=use_impedance)
+                         show_params=False, total_time=total_sim_time, plotter=plot_graphs, use_impedance=use_impedance,
+                         use_spiral=use_spiral)
 
     # Notice how the environment is wrapped by the wrapper
     env = GymWrapper(
@@ -246,9 +248,9 @@ if __name__ == "__main__":
         )
     )
     eval_steps = 50
-    learning_steps = 10_000
-    seed = 4
-    # seed = seed_initializer()
+    learning_steps = 20_000
+    # seed = 4
+    seed = seed_initializer()
     # mode = 'new_train'
     mode = 'new_train'
     # mode = 'continue_train'
@@ -261,7 +263,7 @@ if __name__ == "__main__":
         print('Training New Model')
 
         # new training
-        policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[32, 32])
+        policy_kwargs = dict(activation_fn=torch.nn.LeakyReLU, net_arch=[64])
         model = PPO('MlpPolicy', env, verbose=1, policy_kwargs=policy_kwargs,
                     tensorboard_log="./learning_log/ppo_tensorboard/", n_steps=10, seed=seed)
 
@@ -269,20 +271,21 @@ if __name__ == "__main__":
 
         model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback)
         print("------------ Done Training -------------")
-        model.save('Daniel_changes_test_run_bigger_error.zip')
+        model.save('Simulation_3_15k_n8_noseed_10steps_64layer_benchmark.zip')
 
     if mode == 'eval':
         print('Evaluating Model')
         # evaluation
-        model = PPO.load("./daniel_sim_results_2/simulation_2/robosuite/callback/best_model_callback.zip", verbose=1,
+        model = PPO.load("./daniel_n8_sim/sim2_n8/Simulation_2_10k_n8_noseed_benchmark.zip", verbose=1,
                          env=env)
 
     if mode == 'continue_train':
         print('Training Continuation')
-        model = PPO.load("./daniel_sim_results/daniel_original_benchmark/Daniel_n5_banchmark_single.zip",
+        model = PPO.load("./daniel_n8_sim/sim3_n8/Simulation_2_10k_n8_noseed_20steps_benchmark.zip",
                          tensorboard_log="./learning_log/ppo_tensorboard/", verbose=1, env=env)
         model.set_env(env)
         model.learn(total_timesteps=learning_steps, tb_log_name="learning", callback=reward_callback, reset_num_timesteps=False)
+        model.save('Simulation_2_10k_n8_noseed_20steps_benchmark_continue_train.zip')
         print("------------ Done Retraining -------------")
 
     # evaluation

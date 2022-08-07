@@ -57,6 +57,14 @@ class EnvMeta(type):
         return cls
 
 
+def save_error(error, value):
+    temp = {'error': error, 'value': value}
+    file_name = 'error_values.csv'
+    with open(file_name, 'a+') as f:
+        for key in temp.keys():
+            f.write("%s,%s\n" % (key, temp[key]))
+
+
 class MujocoEnv(metaclass=EnvMeta):
     """
     Initializes a Mujoco Environment.
@@ -280,7 +288,7 @@ class MujocoEnv(metaclass=EnvMeta):
                 self.modify_observable(observable_name=obs_name, attribute="sensor", modifier=obs._sensor)
         # Make sure that all sites are toggled OFF by default
         # TODO: to view sites set False > True
-        self.visualize(vis_settings={vis: True for vis in self._visualizations})
+        self.visualize(vis_settings={vis: False for vis in self._visualizations})
         # Return new observations
         return self._get_observations(force_update=True)
 
@@ -397,7 +405,7 @@ class MujocoEnv(metaclass=EnvMeta):
             ValueError: [Steps past episode termination]
 
         """
-        global info, reward
+        global info, reward, flag
         if self.done:
             raise ValueError("executing action in terminated episode")
 
@@ -437,8 +445,11 @@ class MujocoEnv(metaclass=EnvMeta):
             # print(self.control_timestep)
             self.cur_time += self.control_timestep
             # print(self.cur_time)
-            reward, done, info = self._post_action(action)
+            reward, done, info, flag = self._post_action(action)
             self.rewards_all.append(reward)
+
+        # used for saving the error
+        # save_error(self.error, flag)
 
         info.update({"time": self.timestep})
         if self.success >= SUCCESS_STEPS:
@@ -486,19 +497,23 @@ class MujocoEnv(metaclass=EnvMeta):
 
         """
         reward = self.reward(action)
-
+        state_flag = None
         # done if number of elapsed timesteps is greater than horizon
         end_horizon = self.timestep >= self.horizon
         end_termination = self.num_via_point == 1 and self.success == -5
         self.end_success = self._check_success() and self.num_via_point == 1 and self.success == SUCCESS_STEPS
 
         if end_horizon:
+            state_flag = 0
             print("End of horizon")
         if end_termination:
+            state_flag = -1
             print('Early termination')
+        if self.end_success:
+            state_flag = 1
 
         self.done = end_termination or end_horizon or self.end_success
-        return reward, self.done, {}
+        return reward, self.done, {}, state_flag
 
     def reward(self, action):
         """
@@ -787,5 +802,4 @@ class MujocoEnv(metaclass=EnvMeta):
             int: Action space dimension
         """
         raise NotImplementedError
-
 

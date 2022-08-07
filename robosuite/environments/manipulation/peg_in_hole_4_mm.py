@@ -547,7 +547,7 @@ class PegInHoleSmall(SingleArmEnv):
         if self.error_type == 'none':
             trans_error = np.array([0.0, 0, 0]) * self.dist_error * 0  # fixed error
         if self.error_type == 'fixed':
-            trans_error = np.array([0.0004, 0.000, 0.0])  # fixed error
+            trans_error = np.array([0.00, -0.0045, 0.0])  # fixed error
         if self.error_type == 'ring':
             r_low = 0.0004
             r_high = 0.0008

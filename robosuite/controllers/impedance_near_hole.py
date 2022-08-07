@@ -137,6 +137,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
                  show_params=True,
                  total_time=0,
                  use_impedance=True,
+                 use_spiral=False,
                  **kwargs  # does nothing; used so no error raised when dict is passed with extra terms used previously
                  ):
 
@@ -146,8 +147,12 @@ class ImpedancePositionBaseControllerPartial(Controller):
             joint_indexes,
             actuator_range,
         )
+        self.theta_current = 0
+        self.radius_current = 0
+
         self.skip = False
         self.t_flag = None
+        self.use_spiral = use_spiral
         self.use_impedance = use_impedance
 
         # for ploting:
@@ -186,6 +191,8 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         self.kp = self.nums2array(kp, 6)
         self.kd = 2 * np.sqrt(self.kp) * damping_ratio
+
+
 
         # -------- Elad PD params-------------
         # Kp_pos = 1 * 4500 * np.ones(3)  # 5*4500*np.ones(3)
@@ -244,27 +251,34 @@ class ImpedancePositionBaseControllerPartial(Controller):
         self.ee_sensor_bias = 0
 
         # for graphs
-        self.ee_pos_vec_x, self.ee_pos_vec_y, self.ee_pos_vec_z = [], [], []
-        self.impedance_model_pos_vec_x, self.impedance_model_pos_vec_y, self.impedance_model_pos_vec_z = [], [], []
-        self.time, self.error_pos_vec = [], []
-        self.ee_ori_vec_x, self.ee_ori_vec_y, self.ee_ori_vec_z = [], [], []
-        self.impedance_ori_vec_x, self.impedance_ori_vec_y, self.impedance_ori_vec_z = [], [], []
-        self.desired_torque_x, self.desired_torque_y, self.desired_torque_z = [], [], []
-        self.desired_force_x, self.desired_force_y, self.desired_force_z = [], [], []
-        self.wernce_vec_int_Fx, self.wernce_vec_int_Fy, self.wernce_vec_int_Fz = [], [], []
-        self.wernce_vec_int_Mx, self.wernce_vec_int_My, self.wernce_vec_int_Mz = [], [], []
+
+        self.time_vec = []
+        # robot measurements
+        self.ee_pos_x_vec, self.ee_pos_y_vec, self.ee_pos_z_vec = [], [], []
+        self.ee_vel_x_vec, self.ee_vel_y_vec, self.ee_vel_z_vec = [], [], []
+        self.ee_ori_x_vec, self.ee_ori_y_vec, self.ee_ori_z_vec = [], [], []
+        self.ee_ori_vel_x_vec, self.ee_ori_vel_y_vec, self.ee_ori_vel_z_vec = [], [], []
+        # minimum jerk
         self.pos_min_jerk_x, self.pos_min_jerk_y, self.pos_min_jerk_z = [], [], []
-        self.ori_min_jerk_x, self.ori_min_jerk_y, self.ori_min_jerk_z = [], [], []
-        self.eef_wernce_vec_int_Fx, self.eef_wernce_vec_int_Fy, self.eef_wernce_vec_int_Fz = [], [], []
-        self.eef_wernce_vec_int_Mx, self.eef_wernce_vec_int_My, self.eef_wernce_vec_int_Mz = [], [], []
-        self.real_force_x, self.real_force_y, self.real_force_z = [], [], []
-        self.ori_vel_min_jerk_x, self.ori_vel_min_jerk_y, self.ori_vel_min_jerk_z = [], [], []
-        self.ee_ori_vel_vec_x, self.ee_ori_vel_vec_y, self.ee_ori_vel_vec_z = [], [], []
-        self.ori_vel_min_jerk_orig_x, self.ori_vel_min_jerk_orig_y, self.ori_vel_min_jerk_orig_z = [], [], []
-        self.impedance_ori_vel_vec_x, self.impedance_ori_vel_vec_y, self.impedance_ori_vel_vec_z = [], [], []
-        self.impedance_vel_vec_x, self.impedance_vel_vec_y, self.impedance_vel_vec_z = [], [], []
         self.vel_min_jerk_x, self.vel_min_jerk_y, self.vel_min_jerk_z = [], [], []
-        self.ee_vel_vec_x, self.ee_vel_vec_y, self.ee_vel_vec_z = [], [], []
+        self.ori_min_jerk_x, self.ori_min_jerk_y, self.ori_min_jerk_z = [], [], []
+        self.ori_vel_min_jerk_x, self.ori_vel_min_jerk_y, self.ori_vel_min_jerk_z = [], [], []
+        # impedance
+        self.impedance_pos_vec_x, self.impedance_pos_vec_y, self.impedance_pos_vec_z = [], [], []
+        self.impedance_ori_vec_x, self.impedance_ori_vec_y, self.impedance_ori_vec_z = [], [], []
+        self.impedance_vel_vec_x, self.impedance_vel_vec_y, self.impedance_vel_vec_z = [], [], []
+        self.impedance_ori_vel_vec_x, self.impedance_ori_vel_vec_y, self.impedance_ori_vel_vec_z = [], [], []
+        # wrench - based on PD
+        self.applied_wrench_fx, self.applied_wrench_fy, self.applied_wrench_fz = [], [], []
+        self.applied_wrench_mx, self.applied_wrench_my, self.applied_wrench_mz = [], [], []
+        # sensor readings
+        self.sensor_fx, self.sensor_fy, self.sensor_fz = [], [], []
+        self.sensor_mx, self.sensor_my, self.sensor_mz = [], [], []
+        # spiral
+        self.spiral_x = []
+        self.spiral_y = []
+        self.robot_spiral_x = []
+        self.robot_spiral_y = []
 
     def set_goal(self):
         """
@@ -312,24 +326,35 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         self.desired_pos = np.concatenate((self.goal_pos, self.goal_ori, self.goal_vel, self.goal_ori_vel), axis=0)
 
-        if self.method == 'euler':
-            self.desired_pos[3:6] = deepcopy(orientation_error(T.euler2mat(self.desired_pos[3:6]), self.ee_ori_mat))
-            ori_error = self.desired_pos[3:6]
-            ori_min_jerk = deepcopy(self.desired_pos[3:6])
-            ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
-            self.desired_pos[9:12] = deepcopy(self.euler2WorldAngle_vel(self.desired_pos[9:12]))
-            ori_vel_min_jerk = deepcopy(self.desired_pos[9:12])
-
+        # get sensor measurement above the hole to subtract bias of the sensor
         if self.switch and self.bias:
             self.ee_sensor_bias = deepcopy(np.concatenate(
                 (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
                 axis=0))
             self.bias = 0
 
+        # detect contact with the surface
         if self.find_contacts() and self.enter == 0:
             self.enter = 1
-
             print('%%%%%%%%%% Contact established %%%%%%%%%%%')
+
+        # we don't want to do spiral search in the hole, so if peg tip
+        # goes below surface level of hole than we turn off spiral
+        if self.use_spiral:
+            peg_tip_z = self.sim.data.get_site_xpos("peg_site")[2]
+            # use spiral if contact has been made and the peg is not below hole surface
+            if self.switch and self.enter and peg_tip_z > 0.865:
+                theta_next, radius_next, x_next, y_next = self.next_spiral(self.theta_current, self.radius_current)
+                self.theta_current = deepcopy(theta_next)
+                self.radius_current = deepcopy(radius_next)
+
+                self.desired_pos[:2] += np.array([x_next, y_next])
+                # add shift to the spiral search which is planned at (0,0)
+                self.spiral_x.append(x_next+self.desired_pos[0])
+                self.spiral_y.append(y_next+self.desired_pos[1])
+                self.robot_spiral_x.append(self.ee_pos[0])
+                self.robot_spiral_y.append(self.ee_pos[1])
+                print('Spiral')
 
         if self.switch and self.enter:
             if self.bias == 0:
@@ -337,6 +362,9 @@ class ImpedancePositionBaseControllerPartial(Controller):
                 self.bias = None
                 self.kp = deepcopy(np.clip(self.kp_impedance, self.kp_min, self.kp_max))
                 self.kd = deepcopy(np.clip(self.kd_impedance, 0.0, 4 * 2 * np.sqrt(self.kp) * np.sqrt(2)))
+                #
+                # self.kp = np.array([1000., 1000., 100., 450., 450., 450.])
+                # self.kd = np.array([150, 150, 20., 30., 30., 30.])
 
             self.F_int = (np.concatenate(
                 (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
@@ -347,16 +375,13 @@ class ImpedancePositionBaseControllerPartial(Controller):
                     self.ImpedanceEq(self.F_int, self.F0, self.desired_pos[:3], self.desired_pos[3:6],
                                      self.desired_pos[6:9], self.desired_pos[9:12],
                                      self.sim.model.opt.timestep))
-            if self.method == 'euler':
-                ori_error = self.desired_pos[3:6] - ori_real
 
         self.F_int = (np.concatenate(
             (self.ee_ori_mat @ -self.sim.data.sensordata[:3], self.ee_ori_mat @ -self.sim.data.sensordata[3:]),
             axis=0) - self.ee_sensor_bias)
 
-        if self.method == 'rotation':
-            ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
-            ori_error = self.desired_pos[3:6] - ori_real
+        ori_real = T.Rotation_Matrix_To_Vector(self.final_orientation, self.ee_ori_mat)
+        ori_error = self.desired_pos[3:6] - ori_real
 
         vel_ori_error = self.desired_pos[9:12] - self.ee_ori_vel
 
@@ -364,8 +389,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
         position_error = self.desired_pos[:3].T - self.ee_pos
         vel_pos_error = self.desired_pos[6:9].T - self.ee_pos_vel
 
-        #################    calculate PD controller:         #########################################
-
+        # PD controller
         desired_force = (np.multiply(np.array(position_error), np.array(self.kp[0:3]))
                          + np.multiply(vel_pos_error, self.kd[0:3]))
 
@@ -385,14 +409,38 @@ class ImpedancePositionBaseControllerPartial(Controller):
         if self.plotter:
 
             # for graphs:
-            real_forces = np.dot(np.linalg.inv(self.J_full.T), self.sim.data.qfrc_actuator[:6]).reshape(6, )
-            self.time.append(self.sim.data.time)
-            self.ee_pos_vec_x.append(self.ee_pos[0])
-            self.ee_pos_vec_y.append(self.ee_pos[1])
-            self.ee_pos_vec_z.append(self.ee_pos[2])
-            self.impedance_model_pos_vec_x.append(self.desired_pos[0])
-            self.impedance_model_pos_vec_y.append(self.desired_pos[1])
-            self.impedance_model_pos_vec_z.append(self.desired_pos[2])
+            # real_forces = np.dot(np.linalg.inv(self.J_full.T), self.sim.data.qfrc_actuator[:6]).reshape(6, )
+            self.time_vec.append(self.sim.data.time)
+            # robot measurements
+            self.ee_pos_x_vec.append(self.ee_pos[0])
+            self.ee_pos_y_vec.append(self.ee_pos[1])
+            self.ee_pos_z_vec.append(self.ee_pos[2])
+            self.ee_vel_x_vec.append((self.ee_pos_vel[0]))
+            self.ee_vel_y_vec.append((self.ee_pos_vel[1]))
+            self.ee_vel_z_vec.append((self.ee_pos_vel[2]))
+            self.ee_ori_x_vec.append(ori_real[0])
+            self.ee_ori_y_vec.append(ori_real[1])
+            self.ee_ori_z_vec.append(ori_real[2])
+            self.ee_ori_vel_x_vec.append(self.ee_ori_vel[0])
+            self.ee_ori_vel_y_vec.append(self.ee_ori_vel[1])
+            self.ee_ori_vel_z_vec.append(self.ee_ori_vel[2])
+            # minimum jerk
+            self.pos_min_jerk_x.append(self.goal_pos[0])
+            self.pos_min_jerk_y.append(self.goal_pos[1])
+            self.pos_min_jerk_z.append(self.goal_pos[2])
+            self.vel_min_jerk_x.append(self.goal_vel[0])
+            self.vel_min_jerk_y.append(self.goal_vel[1])
+            self.vel_min_jerk_z.append(self.goal_vel[2])
+            self.ori_min_jerk_x.append(self.goal_ori[0])
+            self.ori_min_jerk_y.append(self.goal_ori[1])
+            self.ori_min_jerk_z.append(self.goal_ori[2])
+            self.ori_vel_min_jerk_x.append(self.goal_ori_vel[0])
+            self.ori_vel_min_jerk_y.append(self.goal_ori_vel[1])
+            self.ori_vel_min_jerk_z.append(self.goal_ori_vel[2])
+            # impedance
+            self.impedance_pos_vec_x.append(self.desired_pos[0])
+            self.impedance_pos_vec_y.append(self.desired_pos[1])
+            self.impedance_pos_vec_z.append(self.desired_pos[2])
             self.impedance_ori_vec_x.append(self.desired_pos[3])
             self.impedance_ori_vec_y.append(self.desired_pos[4])
             self.impedance_ori_vec_z.append(self.desired_pos[5])
@@ -402,63 +450,23 @@ class ImpedancePositionBaseControllerPartial(Controller):
             self.impedance_ori_vel_vec_x.append(self.desired_pos[9])
             self.impedance_ori_vel_vec_y.append(self.desired_pos[10])
             self.impedance_ori_vel_vec_z.append(self.desired_pos[11])
-            self.error_pos_vec.append(ori_error)
-            self.ee_ori_vec_x.append(ori_real[0])
-            self.ee_ori_vec_y.append(ori_real[1])
-            self.ee_ori_vec_z.append(ori_real[2])
-            self.desired_torque_x.append(desired_torque[0])
-            self.desired_torque_y.append(desired_torque[1])
-            self.desired_torque_z.append(desired_torque[2])
-            self.desired_force_x.append(desired_force[0])
-            self.desired_force_y.append(desired_force[1])
-            self.desired_force_z.append(desired_force[2])
-            self.wernce_vec_int_Fx.append(self.F_int[0])
-            self.wernce_vec_int_Fy.append(self.F_int[1])
-            self.wernce_vec_int_Fz.append(self.F_int[2])
-            self.wernce_vec_int_Mx.append(self.F_int[3])
-            self.wernce_vec_int_My.append(self.F_int[4])
-            self.wernce_vec_int_Mz.append(self.F_int[5])
-            self.eef_wernce_vec_int_Fx.append(self.sim.data.sensordata[0])
-            self.eef_wernce_vec_int_Fy.append(self.sim.data.sensordata[1])
-            self.eef_wernce_vec_int_Fz.append(self.sim.data.sensordata[2])
-            self.eef_wernce_vec_int_Mx.append(self.sim.data.sensordata[3])
-            self.eef_wernce_vec_int_My.append(self.sim.data.sensordata[4])
-            self.eef_wernce_vec_int_Mz.append(self.sim.data.sensordata[5])
-            self.real_force_x.append(real_forces[0])
-            self.real_force_y.append(real_forces[1])
-            self.real_force_z.append(real_forces[2])
-            self.pos_min_jerk_x.append(self.goal_pos[0])
-            self.pos_min_jerk_y.append(self.goal_pos[1])
-            self.pos_min_jerk_z.append(self.goal_pos[2])
-            if self.method == 'euler':
-                self.ori_min_jerk_x.append(ori_min_jerk[0])
-                self.ori_min_jerk_y.append(ori_min_jerk[1])
-                self.ori_min_jerk_z.append(ori_min_jerk[2])
-                self.ori_vel_min_jerk_x.append(ori_vel_min_jerk[0])
-                self.ori_vel_min_jerk_y.append(ori_vel_min_jerk[1])
-                self.ori_vel_min_jerk_z.append(ori_vel_min_jerk[2])
-            else:
-                self.ori_min_jerk_x.append(self.goal_ori[0])
-                self.ori_min_jerk_y.append(self.goal_ori[1])
-                self.ori_min_jerk_z.append(self.goal_ori[2])
-                self.ori_vel_min_jerk_x.append(self.goal_ori_vel[0])
-                self.ori_vel_min_jerk_y.append(self.goal_ori_vel[1])
-                self.ori_vel_min_jerk_z.append(self.goal_ori_vel[2])
-            self.vel_min_jerk_x.append(self.goal_vel[0])
-            self.vel_min_jerk_y.append(self.goal_vel[1])
-            self.vel_min_jerk_z.append(self.goal_vel[2])
-            self.ee_vel_vec_x.append((self.ee_pos_vel[0]))
-            self.ee_vel_vec_y.append((self.ee_pos_vel[1]))
-            self.ee_vel_vec_z.append((self.ee_pos_vel[2]))
-            self.ee_ori_vel_vec_x.append(self.ee_ori_vel[0])
-            self.ee_ori_vel_vec_y.append(self.ee_ori_vel[1])
-            self.ee_ori_vel_vec_z.append(self.ee_ori_vel[2])
-            # self.ori_vel_min_jerk_orig_x.append(self.goal_ori_vel[0])
-            # self.ori_vel_min_jerk_orig_y.append(self.goal_ori_vel[1])
-            # self.ori_vel_min_jerk_orig_z.append(self.goal_ori_vel[2])
-            # print(self.ee_sensor_bias)
-            # print(self.sim.data.cfrc_ext)
-            # print(self.ee_pos_vec)
+            # wrench - based on PD
+            self.applied_wrench_fx.append(decoupled_wrench[0])
+            self.applied_wrench_fy.append(decoupled_wrench[1])
+            self.applied_wrench_fz.append(decoupled_wrench[2])
+            self.applied_wrench_mx.append(decoupled_wrench[3])
+            self.applied_wrench_my.append(decoupled_wrench[4])
+            self.applied_wrench_mz.append(decoupled_wrench[5])
+            # sensor readings
+            self.sensor_fx.append(self.F_int[0])
+            self.sensor_fy.append(self.F_int[1])
+            self.sensor_fz.append(self.F_int[2])
+            self.sensor_mx.append(self.F_int[3])
+            self.sensor_my.append(self.F_int[4])
+            self.sensor_mz.append(self.F_int[5])
+            # self.real_force_x.append(real_forces[0])
+            # self.real_force_y.append(real_forces[1])
+            # self.real_force_z.append(real_forces[2])
 
         return self.torques
 
@@ -725,7 +733,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
     def control_plotter(self):
 
         # self.save_plot_data()
-        t = self.time  # list(range(0, np.size(self.ee_pos_vec_x)))
+        t = self.time_vec  # list(range(0, np.size(self.ee_pos_vec_x)))
         # ################################################################################################################
         # idx = int(6 / 0.002)
         # idx2 = int(7.3 / 0.002)
@@ -741,36 +749,63 @@ class ImpedancePositionBaseControllerPartial(Controller):
         # print('robot_x', self.ee_pos_vec_x[idx2] * 1000)
         # print('diff', abs(self.pos_min_jerk_x[idx2] - self.ee_pos_vec_x[idx2]) * 1000)
 
+        plt.figure("Spiral")
+        plt.plot(self.spiral_x, self.spiral_y, 'g', label='Ref position')
+        plt.plot(self.robot_spiral_x, self.robot_spiral_y, 'b', label='Robot position')
+        hole = self.sim.data.get_body_xpos("hole_hole")
+        plt.plot(hole[0], hole[1], "ro")
+        plt.legend()
+        plt.grid()
+
         plt.figure()
         ax1 = plt.subplot(311)
-        ax1.plot(t, self.impedance_model_pos_vec_x, 'g--', label='Xm position')
-        ax1.plot(t, self.ee_pos_vec_x, 'b', label='Xr position')
+        ax1.plot(self.pos_min_jerk_x, self.pos_min_jerk_y, 'g', label='Ref position')
+        ax1.plot(self.ee_pos_x_vec, self.ee_pos_y_vec, 'b', label='Robot position')
+        ax1.set_ylabel('X')
+        ax1.set_xlabel('Y')
+
+        ax2 = plt.subplot(312)
+        ax2.plot(t, self.pos_min_jerk_x, 'g--', label='X_ref position')
+        ax2.plot(t, self.ee_pos_x_vec, 'b', label='Xr position')
+        ax2.legend()
+        ax2.set_title('X Position [m]')
+
+        ax3 = plt.subplot(313)
+        ax3.plot(t, self.pos_min_jerk_y, 'g--', label='Y_ref position')
+        ax3.plot(t, self.ee_pos_y_vec, 'b', label='Yr position')
+        ax3.legend()
+        ax3.set_title('Y Position [m]')
+
+        plt.figure("Position")
+        ax1 = plt.subplot(311)
+        ax1.plot(t, self.impedance_pos_vec_x, 'g--', label='Xm position')
+        ax1.plot(t, self.ee_pos_x_vec, 'b', label='Xr position')
         ax1.plot(t, self.pos_min_jerk_x, 'r--', label='X_ref position')
         # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('X Position [m]')
 
         ax2 = plt.subplot(312)
-        ax2.plot(t, self.impedance_model_pos_vec_y, 'g--', label='Ym position')
-        ax2.plot(t, self.ee_pos_vec_y, 'b', label='Yr position')
+        ax2.plot(t, self.impedance_pos_vec_y, 'g--', label='Ym position')
+        ax2.plot(t, self.ee_pos_y_vec, 'b', label='Yr position')
         ax2.plot(t, self.pos_min_jerk_y, 'r--', label='Y_ref position')
         # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Y Position [m]')
 
         ax3 = plt.subplot(313)
-        ax3.plot(t, self.impedance_model_pos_vec_z, 'g--', label='Zm position')
-        ax3.plot(t, self.ee_pos_vec_z, 'b', label='Zr position')
+        ax3.plot(t, self.impedance_pos_vec_z, 'g--', label='Zm position')
+        ax3.plot(t, self.ee_pos_z_vec, 'b', label='Zr position')
         ax3.plot(t, self.pos_min_jerk_z, 'r--', label='Z_ref position')
         # ax3.axvline(x=self.t_flag, color='k')
         # ax3.axvline(x=16, color='k')
         ax3.legend()
         ax3.set_title('Z Position [m]')
         ################################################################################################################
-        plt.figure()
+        plt.figure("Linear velocity")
         ax1 = plt.subplot(311)
         ax1.plot(t, self.impedance_vel_vec_x, 'g--', label='Xm vel')
-        ax1.plot(t, self.ee_vel_vec_x, 'b', label='Xr vel')
+        ax1.plot(t, self.ee_vel_x_vec, 'b', label='Xr vel')
         ax1.plot(t, self.vel_min_jerk_x, 'r--', label='X_ref vel')
         # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
@@ -778,7 +813,7 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         ax2 = plt.subplot(312)
         ax2.plot(t, self.impedance_vel_vec_y, 'g--', label='Ym vel')
-        ax2.plot(t, self.ee_vel_vec_y, 'b', label='Yr vel')
+        ax2.plot(t, self.ee_vel_y_vec, 'b', label='Yr vel')
         ax2.plot(t, self.vel_min_jerk_y, 'r--', label='Y_ref vel')
         # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
@@ -786,97 +821,111 @@ class ImpedancePositionBaseControllerPartial(Controller):
 
         ax3 = plt.subplot(313)
         ax3.plot(t, self.impedance_vel_vec_z, 'g--', label='Zm vel')
-        ax3.plot(t, self.ee_vel_vec_z, 'b', label='Zr vel')
+        ax3.plot(t, self.ee_vel_z_vec, 'b', label='Zr vel')
         ax3.plot(t, self.vel_min_jerk_z, 'r--', label='Z_ref vel')
         # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Z Velocity [m/s]')
         ################################################################################################################
-        plt.figure()
+        plt.figure("Angular Velocity")
         ax1 = plt.subplot(311)
-        ax1.plot(t, self.ee_ori_vel_vec_x, 'b', label='Xr')
+        ax1.plot(t, self.ee_ori_vel_x_vec, 'b', label='Xr')
         ax1.plot(t, self.ori_vel_min_jerk_x, 'r--', label='X_ref ')
         # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('X ori vel [rad/s]')
 
         ax2 = plt.subplot(312)
-        ax2.plot(t, self.ee_ori_vel_vec_y, 'b', label='Yr ')
+        ax2.plot(t, self.ee_ori_vel_y_vec, 'b', label='Yr ')
         ax2.plot(t, self.ori_vel_min_jerk_y, 'r--', label='Y_ref ')
         # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Y ori vel [rad/s]')
 
         ax3 = plt.subplot(313)
-        ax3.plot(t, self.ee_ori_vel_vec_z, 'b', label='Zr ')
+        ax3.plot(t, self.ee_ori_vel_z_vec, 'b', label='Zr ')
         ax3.plot(t, self.ori_vel_min_jerk_z, 'r--', label='Z_ref ')
         # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Z ori vel [rad/s]')
         ################################################################################################################
-        plt.figure()
+        plt.figure("Orientation")
         ax1 = plt.subplot(311)
-        ax1.plot(t, self.ee_ori_vec_x, 'b', label='Xr')
+        ax1.plot(t, self.ee_ori_x_vec, 'b', label='Xr')
         ax1.plot(t, self.ori_min_jerk_x, 'r', label='X_ref ')
         ax1.plot(t, self.impedance_ori_vec_x, 'g--', label='Xm ')
         ax1.legend()
         ax1.set_title('X ori [rad]')
 
         ax2 = plt.subplot(312)
-        ax2.plot(t, self.ee_ori_vel_vec_y, 'b', label='Yr ')
+        ax2.plot(t, self.ee_ori_y_vec, 'b', label='Yr ')
         ax2.plot(t, self.ori_min_jerk_y, 'r', label='Y_ref ')
         ax2.plot(t, self.impedance_ori_vec_y, 'g--', label='Ym ')
         ax2.legend()
         ax2.set_title('Y ori [rad]')
 
         ax3 = plt.subplot(313)
-        ax3.plot(t, self.ee_ori_vec_z, 'b', label='Zr ')
+        ax3.plot(t, self.ee_ori_z_vec, 'b', label='Zr ')
         ax3.plot(t, self.ori_min_jerk_z, 'r', label='Z_ref ')
         ax3.plot(t, self.impedance_ori_vec_z, 'g--', label='Zm ')
         ax3.legend()
         ax3.set_title('Z ori[rad]')
         ################################################################################################################
-        plt.figure()
+        plt.figure("Forces")
         ax1 = plt.subplot(311)
-        ax1.plot(t, self.wernce_vec_int_Fx, 'b', label='Fx')
-        ax1.plot(t, self.desired_force_x, 'g', label='Fx_des')
+        ax1.plot(t, self.sensor_fx, 'b', label='Fx_sensor')
+        ax1.plot(t, self.applied_wrench_fx, 'g', label='Fx_wrench')
         # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('Fx [N]')
 
         ax2 = plt.subplot(312)
-        ax2.plot(t, self.wernce_vec_int_Fy, 'b', label='Fy')
-        ax2.plot(t, self.desired_force_y, 'g', label='Fy_des')
+        ax2.plot(t, self.sensor_fy, 'b', label='Fy_sensor')
+        ax2.plot(t, self.applied_wrench_fy, 'g', label='Fy_wrench')
         # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('Fy [N]')
 
         ax3 = plt.subplot(313)
-        ax3.plot(t, self.wernce_vec_int_Fz, 'b', label='Fz')
-        ax3.plot(t, self.desired_force_z, 'g', label='Fz_des')
+        ax3.plot(t, self.sensor_fz, 'b', label='Fz_sensor')
+        ax3.plot(t, self.applied_wrench_fz, 'g', label='Fz_wrench')
         # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Fz [N]')
         ################################################################################################################
-        plt.figure()
+        plt.figure("Moments")
         ax1 = plt.subplot(311)
-        ax1.plot(t, self.wernce_vec_int_Mx, 'b', label='Mx')
-        ax1.plot(t, self.desired_torque_x, 'g', label='mx_des')
+        ax1.plot(t, self.sensor_mx, 'b', label='Mx_sensor')
+        ax1.plot(t, self.applied_wrench_mx, 'g', label='Mx_wrench')
         # ax1.axvline(x=self.t_flag, color='k')
         ax1.legend()
         ax1.set_title('Mx [Nm]')
 
         ax2 = plt.subplot(312)
-        ax2.plot(t, self.wernce_vec_int_My, 'b', label='My')
-        ax2.plot(t, self.desired_torque_y, 'g', label='My_des')
+        ax2.plot(t, self.sensor_my, 'b', label='My_sensor')
+        ax2.plot(t, self.applied_wrench_my, 'g', label='My_wrench')
         # ax2.axvline(x=self.t_flag, color='k')
         ax2.legend()
         ax2.set_title('My [Nm]')
 
         ax3 = plt.subplot(313)
-        ax3.plot(t, self.wernce_vec_int_Mz, 'b', label='Mz')
-        ax3.plot(t, self.desired_torque_z, 'g', label='Mz_des')
+        ax3.plot(t, self.sensor_mz, 'b', label='Mz_sensor')
+        ax3.plot(t, self.applied_wrench_mz, 'g', label='Mz_wrench')
         # ax3.axvline(x=self.t_flag, color='k')
         ax3.legend()
         ax3.set_title('Mz [Nm]')
         plt.show()
+
+    def next_spiral(self, theta_current, radius_current):
+        v = 0.0009230
+        p = 0.001  # set it to clearance value
+        dt = 0.002
+        theta_dot_current = (2 * np.pi * v) / (p * np.sqrt(1 + theta_current))
+
+        theta_next = theta_current + theta_dot_current * dt
+        radius_next = (p / (2 * np.pi)) * theta_next
+
+        x_next = radius_next * np.cos(theta_next)
+        y_next = radius_next * np.sin(theta_next)
+
+        return theta_next, radius_next, x_next, y_next
