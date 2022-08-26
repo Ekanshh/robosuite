@@ -158,7 +158,7 @@ class TwoArmPegInHole(TwoArmEnv):
         render_visual_mesh=True,
         render_gpu_device_id=-1,
         control_freq=20,
-        horizon=1000,
+        horizon=200,
         ignore_done=False,
         hard_reset=True,
         camera_names="agentview",
